@@ -26,7 +26,10 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/scan_me/css/scan_me.css"
-# app_include_js = "/assets/scan_me/js/scan_me.js"
+app_include_js = [
+    "assets/scan_me/js/qrcode.min.js",
+    "/assets/scan_me/js/generate_qr.js"
+    ]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/scan_me/css/scan_me.css"
@@ -79,6 +82,13 @@ app_license = "mit"
 # 	"filters": "scan_me.utils.jinja_filters"
 # }
 
+jinja = {
+	"methods": [
+        "scan_me.utils.jinja_functions.qr",
+        "scan_me.utils.jinja_functions.barcode",
+        "scan_me.utils.jinja_functions.qr_link",
+    ],
+}
 # Installation
 # ------------
 

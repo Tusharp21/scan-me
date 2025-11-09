@@ -1,0 +1,121 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-11-09 02:16:55.781330",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "code_details_section",
+  "uuid",
+  "column_break_lbjb",
+  "hash_value",
+  "document_details_section",
+  "ref_doctype",
+  "column_break_ogsl",
+  "ref_docname",
+  "verification_details_section",
+  "created_on",
+  "column_break_nnvz",
+  "verified_count",
+  "last_verified_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "uuid",
+   "fieldtype": "Data",
+   "label": "UUID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ref_doctype",
+   "fieldtype": "Link",
+   "label": "Ref Doctype",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ref_docname",
+   "fieldtype": "Data",
+   "label": "Ref Docname",
+   "read_only": 1
+  },
+  {
+   "fieldname": "created_on",
+   "fieldtype": "Datetime",
+   "label": "Created On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "verified_count",
+   "fieldtype": "Int",
+   "label": "Verified Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_verified_on",
+   "fieldtype": "Datetime",
+   "label": "Last Verified On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "code_details_section",
+   "fieldtype": "Section Break",
+   "label": "Code Details"
+  },
+  {
+   "fieldname": "column_break_lbjb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "document_details_section",
+   "fieldtype": "Section Break",
+   "label": "Document Details"
+  },
+  {
+   "fieldname": "column_break_ogsl",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "verification_details_section",
+   "fieldtype": "Section Break",
+   "label": "Verification Details"
+  },
+  {
+   "fieldname": "column_break_nnvz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "QR For Hash Value",
+   "fieldname": "hash_value",
+   "fieldtype": "Data",
+   "label": "Hash Value"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-11-09 17:28:21.073835",
+ "modified_by": "Administrator",
+ "module": "Scan Me",
+ "name": "Verified QR",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
