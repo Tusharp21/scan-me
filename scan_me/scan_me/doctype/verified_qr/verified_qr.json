@@ -15,9 +15,7 @@
   "ref_docname",
   "verification_details_section",
   "created_on",
-  "column_break_nnvz",
-  "verified_count",
-  "last_verified_on"
+  "column_break_nnvz"
  ],
  "fields": [
   {
@@ -43,18 +41,6 @@
    "fieldname": "created_on",
    "fieldtype": "Datetime",
    "label": "Created On",
-   "read_only": 1
-  },
-  {
-   "fieldname": "verified_count",
-   "fieldtype": "Int",
-   "label": "Verified Count",
-   "read_only": 1
-  },
-  {
-   "fieldname": "last_verified_on",
-   "fieldtype": "Datetime",
-   "label": "Last Verified On",
    "read_only": 1
   },
   {
@@ -94,7 +80,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-09 17:28:21.073835",
+ "modified": "2025-11-15 23:06:27.970939",
  "modified_by": "Administrator",
  "module": "Scan Me",
  "name": "Verified QR",

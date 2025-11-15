@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Document Verification</title>
+    <link rel="stylesheet" href="verify_document.css">
+    <script src="/assets/scan_me/js/html5-qrcode.min.js"></script>
+</head>
+
+<body>
+    <div class="page-wrapper">
+        <div class="card">
+            <h2 class="title">Document Verification</h2>
+
+            <input id="uuid_input" type="text" class="input-box" hidden=1 placeholder="Enter or Scan UUID">
+
+            <div class="button-row">
+                <button id="scan_btn" class="btn secondary">Scan QR</button>
+            </div>
+
+            <div id="camera_container" class="camera-box"></div>
+
+            <div id="result_box" class="result-box"></div>
+        </div>
+    </div>
+
+    <script src="verify_document.js"></script>
+</body>
+</html>

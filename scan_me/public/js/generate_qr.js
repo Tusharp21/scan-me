@@ -15,13 +15,11 @@ frappe.after_ajax(() => {
                 return;
             }
 
-            // Attach form handlers dynamically
             allowed_doctypes.forEach(dt => {
                 frappe.ui.form.on(dt, {
                     refresh(frm) {
                         if (!frm || frm.is_new() || !frm.doc) return;
 
-                        // Add button only once per refresh
                         if (!frm._has_qr_button && frm.doc.docstatus <= 2) {
                             add_generate_qr_button(frm);
                             frm._has_qr_button = true;
