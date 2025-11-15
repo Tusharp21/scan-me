@@ -6,7 +6,8 @@ from barcode import get_barcode_class
 from barcode.writer import ImageWriter
 from PIL import Image
 import frappe
-from frappe.utils import get_url, scrub_urls
+from frappe.utils import get_url_to_form, get_url
+
 
 
 @frappe.whitelist()
@@ -68,12 +69,18 @@ def barcode(data, barcode_type="code128", module_width=0.2, module_height=15, fo
     except Exception:
         return ""  # Invalid value for the given type
 
-
 @frappe.whitelist()
 def qr_link(doctype, name, clearity=8, fill_color="black", back_color="white", include_logo=False):
-    """Generate QR code linking directly to a Frappe document."""
+    """Generate QR code for the document using the correct desk URL."""
     if not (doctype and name):
-        raise ValueError("qr_link: doctype and name are required")
-    doc_url = f"{get_url()}/app/{scrub_urls(doctype)}/{name}"
-    return qr(doc_url, clearity=clearity, fill_color=fill_color,
-              back_color=back_color, include_logo=include_logo)
+        raise ValueError("doctype and name are required")
+
+    doc_url = get_url_to_form(doctype, name)
+
+    return qr(
+        doc_url,
+        clearity=clearity,
+        fill_color=fill_color,
+        back_color=back_color,
+        include_logo=include_logo
+    )
