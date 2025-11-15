@@ -14,7 +14,6 @@ frappe.after_ajax(() => {
                 console.warn("[Scan Me] No doctypes configured for Verified QR button.");
                 return;
             }
-
             allowed_doctypes.forEach(dt => {
                 frappe.ui.form.on(dt, {
                     refresh(frm) {
