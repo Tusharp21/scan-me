@@ -8,7 +8,6 @@ frappe.ui.form.on("Verified QR", {
         frm.fields.forEach(f => {
             const fieldname = f.df.fieldname;
             const desc = (f.df.description || "").toLowerCase();
-
             // Check if description mentions 'qr'
             if (desc.includes("qr")) {
                 const value = frm.doc[fieldname];
