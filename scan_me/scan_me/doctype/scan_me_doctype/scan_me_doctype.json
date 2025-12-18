@@ -8,10 +8,12 @@
  "field_order": [
   "ref_doctype",
   "column_break_qzgu",
-  "enable"
+  "enable",
+  "signature_required"
  ],
  "fields": [
   {
+   "columns": 6,
    "fieldname": "ref_doctype",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -24,18 +26,27 @@
    "fieldtype": "Column Break"
   },
   {
+   "columns": 2,
    "default": "0",
    "fieldname": "enable",
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Enable"
+  },
+  {
+   "columns": 2,
+   "default": "0",
+   "fieldname": "signature_required",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Signature Required"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-11-09 09:36:46.022688",
+ "modified": "2025-12-16 18:31:49.405835",
  "modified_by": "Administrator",
  "module": "Scan Me",
  "name": "Scan Me Doctype",

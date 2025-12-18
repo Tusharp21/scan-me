@@ -1,32 +1,29 @@
 {
  "actions": [],
- "allow_rename": 1,
+ "autoname": "format:{ref_doctype}-{####}",
  "creation": "2025-11-09 02:16:55.781330",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "code_details_section",
-  "uuid",
-  "column_break_lbjb",
-  "hash_value",
-  "document_details_section",
-  "ref_doctype",
-  "column_break_ogsl",
-  "ref_docname",
-  "verification_details_section",
+  "unique_id",
   "created_on",
-  "column_break_nnvz"
+  "column_break_lbjb",
+  "section_break_xxeh",
+  "ref_doctype",
+  "column_break_ferq",
+  "ref_docname",
+  "section_break_pbja",
+  "signed_by",
+  "signature",
+  "column_break_qavb",
+  "signed_on"
  ],
  "fields": [
   {
-   "fieldname": "uuid",
-   "fieldtype": "Data",
-   "label": "UUID",
-   "read_only": 1
-  },
-  {
    "fieldname": "ref_doctype",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Ref Doctype",
    "options": "DocType",
    "read_only": 1
@@ -34,56 +31,79 @@
   {
    "fieldname": "ref_docname",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Ref Docname",
    "read_only": 1
   },
   {
    "fieldname": "created_on",
    "fieldtype": "Datetime",
+   "in_list_view": 1,
    "label": "Created On",
    "read_only": 1
   },
   {
    "fieldname": "code_details_section",
    "fieldtype": "Section Break",
-   "label": "Code Details"
+   "label": "Basic Details"
   },
   {
    "fieldname": "column_break_lbjb",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "document_details_section",
-   "fieldtype": "Section Break",
-   "label": "Document Details"
+   "fieldname": "section_break_xxeh",
+   "fieldtype": "Section Break"
   },
   {
-   "fieldname": "column_break_ogsl",
+   "fieldname": "column_break_ferq",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "verification_details_section",
-   "fieldtype": "Section Break",
-   "label": "Verification Details"
-  },
-  {
-   "fieldname": "column_break_nnvz",
-   "fieldtype": "Column Break"
-  },
-  {
-   "description": "QR For Hash Value",
-   "fieldname": "hash_value",
+   "description": "With QR",
+   "fieldname": "unique_id",
    "fieldtype": "Data",
-   "label": "Hash Value"
+   "label": "Unique ID",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "section_break_pbja",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "signed_by",
+   "fieldtype": "Link",
+   "label": "Signed by",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_qavb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "signature",
+   "fieldtype": "Signature",
+   "label": "Signature",
+   "read_only": 1
+  },
+  {
+   "fieldname": "signed_on",
+   "fieldtype": "Date",
+   "label": "Signed On",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-15 23:06:27.970939",
+ "modified": "2025-12-18 16:29:01.461461",
  "modified_by": "Administrator",
  "module": "Scan Me",
  "name": "Verified QR",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {
