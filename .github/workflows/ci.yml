@@ -17,12 +17,8 @@ jobs:
       matrix:
         # Define Frappe versions and their corresponding compatible Python versions
         include:
-          - frappe_version: version-14
-            python_version: '3.10'
           - frappe_version: version-15
             python_version: '3.10'
-          - frappe_version: version-16-beta
-            python_version: '3.14-dev'
       fail-fast: false
     name: Server - ${{ matrix.frappe_version }}
 
