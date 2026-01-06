@@ -22,7 +22,7 @@ jobs:
           - frappe_version: version-15
             python_version: '3.10'
           - frappe_version: version-16-beta
-            python_version: '3.12'
+            python_version: '3.14-dev'
       fail-fast: false
     name: Server - ${{ matrix.frappe_version }}
 
@@ -87,6 +87,11 @@ jobs:
         run: |
           # Link the app from the GitHub workspace
           bench get-app scan_me $GITHUB_WORKSPACE
+
+          if [ "${{ matrix.frappe_version }}" == "version-14" ]; then
+            ./env/bin/pip install "urllib3<2.0.0"
+          fi
+
           bench setup requirements --dev
           
           # Create site and install app
