@@ -22,9 +22,7 @@ jobs:
           - frappe_version: version-15
             python_version: '3.10'
           - frappe_version: version-16-beta
-            python_version: '3.14'
-          - frappe_version: develop
-            python_version: '3.14'
+            python_version: '3.12'
       fail-fast: false
     name: Server - ${{ matrix.frappe_version }}
 
