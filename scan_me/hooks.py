@@ -27,9 +27,10 @@ app_license = "mit"
 # include js, css files in header of desk.html
 # app_include_css = "/assets/scan_me/css/scan_me.css"
 app_include_js = [
-    "assets/scan_me/js/qrcode.min.js",
-    "/assets/scan_me/js/generate_qr.js"
-    ]
+	"assets/scan_me/js/qrcode.min.js",
+	"/assets/scan_me/js/generate_qr.js",
+	"/assets/scan_me/js/print_view.js",
+]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/scan_me/css/scan_me.css"
@@ -84,10 +85,14 @@ app_include_js = [
 
 jinja = {
 	"methods": [
-        "scan_me.utils.jinja_functions.qr",
-        "scan_me.utils.jinja_functions.barcode",
-        "scan_me.utils.jinja_functions.qr_link",
-    ],
+		"scan_me.utils.jinja_functions.qr",
+		"scan_me.utils.jinja_functions.barcode",
+		"scan_me.utils.jinja_functions.qr_link",
+		"scan_me.utils.jinja_functions.qr_img",
+		"scan_me.utils.jinja_functions.qr_link_img",
+		"scan_me.utils.jinja_functions.verify_qr",
+		"scan_me.utils.jinja_functions.verify_qr_img",
+	],
 }
 # Installation
 # ------------
@@ -251,4 +256,3 @@ jinja = {
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
-

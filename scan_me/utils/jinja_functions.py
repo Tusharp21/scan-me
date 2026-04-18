@@ -1,3 +1,5 @@
+# Copyright (c) 2025, Tushar Patel and contributors
+# For license information, please see license.txt
 import base64
 from io import BytesIO
 from urllib.request import urlopen
@@ -83,3 +85,79 @@ def qr_link(doctype, name, clearity=8, fill_color="black", back_color="white", i
 	return qr(
 		doc_url, clearity=clearity, fill_color=fill_color, back_color=back_color, include_logo=include_logo
 	)
+
+
+# ---------------------------------------------------------------------------
+# Marker-emitting variants — use these in print formats so the Chrome PDF
+# pipeline can detect an existing QR and avoid double-insertion.
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def qr_img(
+	data, clearity=8, border=4, fill_color="black", back_color="white", include_logo=False, size="30mm"
+):
+	"""Return an <img class="scan-me-qr"> tag for the QR code."""
+	src = qr(
+		data,
+		clearity=clearity,
+		border=border,
+		fill_color=fill_color,
+		back_color=back_color,
+		include_logo=include_logo,
+	)
+	return f'<img class="scan-me-qr" src="{src}" style="width:{size}; height:{size};">'
+
+
+@frappe.whitelist()
+def qr_link_img(
+	doctype, name, clearity=8, fill_color="black", back_color="white", include_logo=False, size="30mm"
+):
+	"""Return an <img class="scan-me-qr"> tag pointing to the document's desk form."""
+	src = qr_link(
+		doctype,
+		name,
+		clearity=clearity,
+		fill_color=fill_color,
+		back_color=back_color,
+		include_logo=include_logo,
+	)
+	return f'<img class="scan-me-qr" src="{src}" style="width:{size}; height:{size};">'
+
+
+# ---------------------------------------------------------------------------
+# Verification-aware helpers — encode the Verified QR payload (uuid|hash)
+# so third parties can validate integrity via /verify_document.
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def verify_qr(doctype, name, clearity=6, border=2, fill_color="black", back_color="white"):
+	"""Return a QR data-URI encoding the Verified QR payload for this document.
+
+	- If a Verified QR exists and `enable_content_hash` is on, payload is ``uuid|hash``.
+	- If a Verified QR exists without hash, payload is just the ``uuid``.
+	- If no Verified QR exists, returns an empty string (caller should not render).
+	"""
+	from scan_me.utils.verification import build_qr_payload
+
+	record = frappe.db.get_value(
+		"Verified QR",
+		{"ref_doctype": doctype, "ref_docname": name},
+		["unique_id", "content_hash"],
+		as_dict=True,
+	)
+	if not record or not record.unique_id:
+		return ""
+
+	payload = build_qr_payload(record.unique_id, record.content_hash)
+	return qr(payload, clearity=clearity, border=border, fill_color=fill_color, back_color=back_color)
+
+
+@frappe.whitelist()
+def verify_qr_img(doctype, name, size="30mm", clearity=6, border=2):
+	"""<img class="scan-me-qr"> for verify_qr. Empty string if the doc has no Verified QR."""
+	src = verify_qr(doctype, name, clearity=clearity, border=border)
+	if not src:
+		return ""
+	return f'<img class="scan-me-qr" src="{src}" style="width:{size}; height:{size};">'

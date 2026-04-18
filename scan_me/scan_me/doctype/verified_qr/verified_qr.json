@@ -9,6 +9,7 @@
   "unique_id",
   "created_on",
   "column_break_lbjb",
+  "content_hash",
   "section_break_xxeh",
   "ref_doctype",
   "column_break_ferq",
@@ -94,6 +95,13 @@
    "fieldtype": "Date",
    "label": "Signed On",
    "read_only": 1
+  },
+  {
+   "fieldname": "content_hash",
+   "fieldtype": "Data",
+   "label": "Content Hash (SHA-256)",
+   "read_only": 1,
+   "description": "SHA-256 of document content captured at sign time. Used for tamper detection."
   }
  ],
  "grid_page_length": 50,

@@ -5,21 +5,148 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "ref_doctype_info"
+  "allowed_documents_section",
+  "ref_doctype_info",
+  "verification_section",
+  "allow_multiple_signers",
+  "enable_content_hash",
+  "column_break_verification",
+  "lock_verified_qr",
+  "reject_client_signature_data",
+  "enable_pades_signing",
+  "verify_page_section",
+  "public_verify_detail",
+  "print_dialog_section",
+  "show_copies_section",
+  "show_header_footer_section",
+  "show_qr_section",
+  "column_break_dialog",
+  "show_signature_section",
+  "show_live_preview"
  ],
  "fields": [
   {
+   "fieldname": "allowed_documents_section",
+   "fieldtype": "Section Break",
+   "label": "Allowed Documents",
+   "description": "Choose which document types can be signed with a Verified QR. Only documents listed below with \"Allow Signing\" ticked can be signed."
+  },
+  {
    "fieldname": "ref_doctype_info",
    "fieldtype": "Table",
-   "label": "Doctype",
+   "label": "Allowed Documents",
    "options": "Scan Me Doctype"
+  },
+  {
+   "fieldname": "verification_section",
+   "fieldtype": "Section Break",
+   "label": "Signing & Verification Rules",
+   "description": "Controls how strictly signatures are validated. Each rule is opt-in and independent; combine them to match your organization's trust requirements. Locks, once enabled, apply to everyone including Administrator."
+  },
+  {
+   "fieldname": "allow_multiple_signers",
+   "fieldtype": "Check",
+   "label": "Allow Multiple Signers Per Document",
+   "default": "0",
+   "description": "Turn on so the same document can be signed by more than one user. Each signer gets their own Verified QR. When off, a document can only be signed once."
+  },
+  {
+   "fieldname": "enable_content_hash",
+   "fieldtype": "Check",
+   "label": "Detect Tampering with Content Hash",
+   "default": "0",
+   "description": "Stores a SHA-256 fingerprint of the document at sign time. If the document is edited later, the signature is automatically flagged as invalid in the PDF and on the verify page. Strongly recommended for production use."
+  },
+  {
+   "fieldname": "column_break_verification",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lock_verified_qr",
+   "fieldtype": "Check",
+   "label": "Lock Signature Records Permanently",
+   "default": "0",
+   "description": "Prevents anyone — including Administrator — from editing or deleting Verified QR records. Turn on to guarantee a tamper-proof audit trail. Leave on in production."
+  },
+  {
+   "fieldname": "reject_client_signature_data",
+   "fieldtype": "Check",
+   "label": "Use Stored User Signature Only",
+   "default": "0",
+   "description": "Server ignores any signature image sent by the browser and uses a signature stored on the User profile instead. Requires adding a Custom Field to the User doctype named one of: user_signature, signature, or signature_image. If none exists, the signature card renders without a handwritten image."
+  },
+  {
+   "fieldname": "enable_pades_signing",
+   "fieldtype": "Check",
+   "label": "Apply Real Digital Signature to PDFs (PAdES)",
+   "default": "0",
+   "description": "Cryptographically signs every generated PDF so Adobe Acrobat Reader shows the signature panel. On first use, a self-signed certificate is auto-created — Adobe will show a yellow \"signer's identity is unknown\" banner until trusted. For the trusted green banner, replace the certificate with one from a recognized authority (eMudhra, DigiCert, Sectigo). See the README for the file path and upgrade steps."
+  },
+  {
+   "fieldname": "verify_page_section",
+   "fieldtype": "Section Break",
+   "label": "Public Verification Page",
+   "description": "Controls the /verify_document/ page that anyone can use to check a document's authenticity. Choose how much detail is shown to guests."
+  },
+  {
+   "fieldname": "public_verify_detail",
+   "fieldtype": "Select",
+   "label": "Detail Level Shown to Guests",
+   "options": "Minimal\nStandard\nFull",
+   "default": "Standard",
+   "description": "Minimal — only the status, document type, and date. Standard (recommended) — also shows document name, full timestamp, signer's name, and verification ID (no email). Full — also shows the signer's email and technical hashes on tampered results. Use Minimal or Standard to avoid exposing staff emails to the public."
+  },
+  {
+   "fieldname": "print_dialog_section",
+   "fieldtype": "Section Break",
+   "label": "Print Dialog Features",
+   "description": "Controls which options appear when a user clicks the Generate PDF button on any document. Turn off features your organization doesn't use to keep the dialog simple."
+  },
+  {
+   "fieldname": "show_copies_section",
+   "fieldtype": "Check",
+   "label": "Multiple Copies (Original / Duplicate / Triplicate)",
+   "default": "1",
+   "description": "Lets users generate multiple stamped copies of the same document in one PDF."
+  },
+  {
+   "fieldname": "show_header_footer_section",
+   "fieldtype": "Check",
+   "label": "Header & Footer Repeat Rules",
+   "default": "1",
+   "description": "Lets users choose whether the letterhead header and footer appear on all pages, only the first page, only the last page, etc."
+  },
+  {
+   "fieldname": "show_qr_section",
+   "fieldtype": "Check",
+   "label": "QR / Barcode Insertion",
+   "default": "1",
+   "description": "Lets users add a QR code to any corner of the PDF, pointing to the Verified QR, the document URL, or custom text."
+  },
+  {
+   "fieldname": "column_break_dialog",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "show_signature_section",
+   "fieldtype": "Check",
+   "label": "Signature Block on PDF",
+   "default": "1",
+   "description": "Lets users append an Adobe-style signature card and optionally apply a real cryptographic (PAdES) signature."
+  },
+  {
+   "fieldname": "show_live_preview",
+   "fieldtype": "Check",
+   "label": "Live PDF Preview in the Dialog",
+   "default": "1",
+   "description": "When on, the dialog shows a preview pane that re-renders the PDF whenever a user changes an option. Turn off for a compact dialog — users only see the PDF after clicking Download."
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-12-17 10:20:41.753242",
+ "modified": "2026-04-19 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Scan Me",
  "name": "Scan Me Settings",

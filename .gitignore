@@ -5,3 +5,9 @@
 tags
 node_modules
 __pycache__
+
+# Belt-and-suspenders: signing material never belongs in the repo.
+*.pfx
+*.p12
+*.pem
+*.key
