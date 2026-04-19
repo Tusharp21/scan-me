@@ -104,8 +104,11 @@ jinja = {
 # Installation
 # ------------
 
-# before_install = "scan_me.install.before_install"
-# after_install = "scan_me.install.after_install"
+# Auto-downloads Chromium for Playwright so PDF generation works out of the box.
+# Falls back gracefully (with a message + Error Log entry) when the download
+# fails — admin can always run `./env/bin/playwright install chromium` manually.
+after_install = "scan_me.install.after_install"
+after_migrate = "scan_me.install.after_migrate"
 
 # Uninstallation
 # ------------

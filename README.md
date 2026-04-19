@@ -25,15 +25,20 @@ bench get-app https://github.com/Tusharp21/scan_me.git
 bench install-app scan_me
 ```
 
-### Post-install (required once)
+That's it — Playwright's Chromium browser (~200 MB) is downloaded automatically
+by the `after_install` hook so PDF generation works immediately. The same hook
+runs on `bench migrate` and only downloads if Chromium is missing, so upgrades
+stay fast.
 
-Scan Me uses Playwright's Chromium for PDF rendering. Download the browser once per bench:
+### Fallback — manual Chromium install
+
+If the auto-download fails (restricted network, no write access to the
+browser cache, etc.), Scan Me logs the error and shows a message on
+first use. Run this once on the server to recover:
 
 ```bash
-./env/bin/playwright install chromium
+./env/bin/python -m playwright install chromium
 ```
-
-This is a one-time ~200 MB download. Without it, PDF generation will fail with a helpful Playwright error.
 
 ### Python dependencies
 
