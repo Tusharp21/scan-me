@@ -15,7 +15,7 @@ MAX_COPIES = 5
 
 
 # ---------------------------------------------------------------------------
-# Options schema passed by the print-preview dialog (scan_me/public/js/print_view.js)
+# Options schema passed by the Advanced Print page (scan_me/scan_me/page/scan_me_print/scan_me_print.js)
 # ---------------------------------------------------------------------------
 # copy_count         int    1/2/3
 # copy_labels        str    comma-separated, e.g. "ORIGINAL, DUPLICATE"
@@ -28,7 +28,7 @@ MAX_COPIES = 5
 # qr_custom_text     str
 # qr_force_insert    0/1    skip marker detection and always inject
 # append_signature   0/1
-# signature_position str    "End of document" | "After first page"
+# watermark_text     str    literal text, or "__status__" to derive from doc
 # ---------------------------------------------------------------------------
 
 DEFAULT_OPTIONS = {
@@ -42,9 +42,16 @@ DEFAULT_OPTIONS = {
 	"qr_custom_text": "",
 	"qr_force_insert": 0,
 	"append_signature": 0,
-	"signature_position": "End of document",
 	"apply_pades": 0,
+	"watermark_text": "",
+	"attach_to_doc": 0,
 }
+
+# Sentinel passed by the client when the user picked the "Document Status" watermark
+# mode — the server resolves the actual label from the doc at render time.
+WATERMARK_STATUS_TOKEN = "__status__"
+# docstatus int → watermark label fallback when the doctype has no ``status`` field.
+DOCSTATUS_LABELS = {0: "DRAFT", 1: "", 2: "CANCELLED"}
 
 
 def _parse_options(raw):
@@ -67,10 +74,17 @@ def _parse_options(raw):
 
 
 def _parse_copy_labels(raw, count):
-	"""Split comma-separated labels and pad with auto-generated names if short."""
+	"""Split comma-separated labels and pad with auto-generated names if short.
+
+	If ``raw`` is empty/whitespace, no stamps are applied — N plain copies are
+	rendered without any badge. Labels are therefore optional on multi-copy PDFs.
+	"""
 	if count <= 1:
 		return [""]
-	labels = [s.strip() for s in (raw or "").split(",") if s.strip()]
+	raw = (raw or "").strip()
+	if not raw:
+		return [""] * count
+	labels = [s.strip() for s in raw.split(",") if s.strip()]
 	while len(labels) < count:
 		labels.append(f"COPY {len(labels) + 1}")
 	return labels[:count]
@@ -151,6 +165,62 @@ def _inject_qr_if_needed(body_html, opts, doctype, name):
 	if re.search(r"</body>", body_html, re.IGNORECASE):
 		return re.sub(r"</body>", block + "</body>", body_html, count=1, flags=re.IGNORECASE)
 	return body_html + block
+
+
+# ---------------------------------------------------------------------------
+# Watermark
+# ---------------------------------------------------------------------------
+
+
+def _resolve_watermark_text(raw, doctype, name):
+	"""Turn the client-supplied ``watermark_text`` into a final label.
+
+	``__status__`` is a sentinel meaning "use the document's status". We prefer
+	an explicit ``status`` field if present (ERPNext sets this on submittable
+	docs), otherwise fall back to a Draft/Cancelled label from docstatus.
+	"""
+	raw = (raw or "").strip()
+	if not raw:
+		return ""
+	if raw != WATERMARK_STATUS_TOKEN:
+		return raw
+	try:
+		doc = frappe.get_doc(doctype, name)
+	except Exception:
+		return ""
+	status = doc.get("status")
+	if status:
+		return str(status).upper()
+	return DOCSTATUS_LABELS.get(getattr(doc, "docstatus", 0), "")
+
+
+def _inject_watermark(body_html, opts, doctype, name):
+	"""Inject a fixed-position watermark that repeats on every PDF page."""
+	text = _resolve_watermark_text(opts.get("watermark_text"), doctype, name)
+	if not text:
+		return body_html
+
+	safe = frappe.utils.escape_html(text)
+	# Font size scales down for long strings so very long statuses still fit.
+	font_size = 140 if len(text) <= 10 else max(60, int(1400 / len(text)))
+	block = (
+		'<div class="sm-watermark" style="'
+		"position:fixed; top:50%; left:50%; "
+		"transform:translate(-50%,-50%) rotate(-35deg); "
+		f"font-size:{font_size}px; font-weight:900; "
+		"color:rgba(220,38,38,0.12); letter-spacing:8px; "
+		"white-space:nowrap; text-transform:uppercase; "
+		"pointer-events:none; z-index:0; "
+		"font-family:Arial,Helvetica,sans-serif; "
+		'-webkit-print-color-adjust:exact; print-color-adjust:exact;">'
+		f"{safe}"
+		"</div>"
+	)
+
+	m = re.search(r"<body[^>]*>", body_html, re.IGNORECASE)
+	if m:
+		return body_html[: m.end()] + block + body_html[m.end() :]
+	return block + body_html
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +406,36 @@ def _build_signature_block(records):
 	return f'<div class="sm-signature-block">{header}{cards}</div>'
 
 
+def _attach_pdf_to_doc(pdf_bytes, safe_name, doctype, name):
+	"""Save the rendered PDF as a File record attached to the source document.
+
+	Uses Frappe's ``save_file`` helper which correctly handles content
+	persistence (writes to disk, hashes, etc.). Permission check is explicit so
+	we can log the refusal. Failures are logged, not raised — the user still
+	gets their download.
+	"""
+	if not frappe.has_permission(doctype, "write", name):
+		frappe.log_error(
+			f"User {frappe.session.user} tried to attach PDF without write access to {doctype} {name}",
+			"Scan Me: attach PDF denied",
+		)
+		return
+
+	try:
+		from frappe.utils.file_manager import save_file
+
+		save_file(
+			fname=f"{safe_name}.pdf",
+			content=pdf_bytes,
+			dt=doctype,
+			dn=name,
+			is_private=1,
+		)
+		frappe.db.commit()  # ensure the File row persists even with response streaming
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "Scan Me: attach PDF failed")
+
+
 def _maybe_pades_sign(pdf_bytes, opts, doctype, name):
 	"""Run the merged PDF through PyHanko if the user asked for PAdES signing.
 
@@ -373,14 +473,8 @@ def _inject_signature_block(body_html, opts, doctype, name):
 		return body_html
 
 	block = embed_images(_build_signature_block(records))
-	position = opts.get("signature_position") or "End of document"
-
-	if position == "Top of document":
-		m = re.search(r"<body[^>]*>", body_html, re.IGNORECASE)
-		if m:
-			return body_html[: m.end()] + block + body_html[m.end() :]
-		return block + body_html
-
+	# Signature block always lands at end of document — the Advanced Print
+	# page no longer exposes a position control.
 	if re.search(r"</body>", body_html, re.IGNORECASE):
 		return re.sub(r"</body>", block + "</body>", body_html, count=1, flags=re.IGNORECASE)
 	return body_html + block
@@ -464,7 +558,7 @@ def embed_images(html):
 
 
 @frappe.whitelist()
-def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, options=None):
+def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, options=None, preview_mode=0):
 	"""Generate a PDF using headless Chromium (Playwright).
 
 	- Header/footer come directly from Letter Head doctype (manage in UI)
@@ -490,6 +584,9 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 	if letter_head == "No Letterhead":
 		letter_head = None
 
+	if not frappe.db.exists(doctype, name):
+		frappe.throw(f"{doctype} {name} does not exist.", frappe.DoesNotExistError)
+
 	header_content, footer_content, header_h, footer_h = _get_letterhead_raw(letter_head)
 
 	# If there's no letterhead header but we still need a copy badge, reserve space.
@@ -510,6 +607,7 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 	else:
 		body_html = f"<html><head><style>{PRINT_CSS}</style></head><body>{body_html}</body></html>"
 
+	body_html = _inject_watermark(body_html, opts, doctype, name)
 	body_html = _inject_qr_if_needed(body_html, opts, doctype, name)
 	body_html = _inject_signature_block(body_html, opts, doctype, name)
 
@@ -553,9 +651,20 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 				pass
 
 	final_pdf = pdf_copies[0] if len(pdf_copies) == 1 else _merge_pdfs(pdf_copies)
-	final_pdf = _maybe_pades_sign(final_pdf, opts, doctype, name)
+
+	# Skip expensive crypto signing on live-preview requests — Adobe's signature
+	# panel isn't visible in the preview iframe anyway, and skipping saves ~300-500ms.
+	is_preview = bool(frappe.utils.cint(preview_mode))
+	if not is_preview:
+		final_pdf = _maybe_pades_sign(final_pdf, opts, doctype, name)
 
 	safe_name = re.sub(r"[^\w\-.]", "-", name)
+
+	# Attach the fully-rendered PDF to the source document when requested.
+	# Only on download (preview_mode off) — preview runs on every keystroke
+	# and attaching each time would litter the document with files.
+	if not is_preview and opts.get("attach_to_doc"):
+		_attach_pdf_to_doc(final_pdf, safe_name, doctype, name)
 	frappe.local.response.filename = f"{safe_name}.pdf"
 	frappe.local.response.filecontent = final_pdf
 	frappe.local.response.type = "pdf"
@@ -578,6 +687,9 @@ def _get_letterhead_raw(letter_head_name):
 	if not letter_head_name:
 		return "", "", 0, 0
 
+	if not frappe.db.exists("Letter Head", letter_head_name):
+		# Letter Head was deleted or renamed — fall back to no-letterhead render.
+		return "", "", 0, 0
 	lh = frappe.get_doc("Letter Head", letter_head_name)
 	header_content = embed_images(lh.get("content") or "")
 	footer_content = embed_images(lh.get("footer") or "")

@@ -29,7 +29,7 @@ app_license = "mit"
 app_include_js = [
 	"assets/scan_me/js/qrcode.min.js",
 	"/assets/scan_me/js/generate_qr.js",
-	"/assets/scan_me/js/print_view.js",
+	"/assets/scan_me/js/hardcopy_button.js",
 ]
 
 # include js, css files in header of web template
@@ -82,6 +82,13 @@ app_include_js = [
 # 	"methods": "scan_me.utils.jinja_methods",
 # 	"filters": "scan_me.utils.jinja_filters"
 # }
+
+fixtures = [
+	{
+		"doctype": "Letter Head",
+		"filters": [["name", "in", ["Letter Head By Scan Me"]]],
+	},
+]
 
 jinja = {
 	"methods": [

@@ -6,3 +6,6 @@
 # Patches added in this section will be executed after doctypes are migrated
 scan_me.patches.v0_0_1.set_dialog_defaults
 scan_me.patches.v0_0_1.set_verify_detail_default
+scan_me.patches.v0_0_1.set_signature_type_default
+scan_me.patches.v0_0_1.set_watermark_mode_default
+scan_me.patches.v0_0_1.set_advanced_print_button_default

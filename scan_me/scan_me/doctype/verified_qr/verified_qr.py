@@ -61,7 +61,12 @@ def check_signature_required(doctype):
 
 @frappe.whitelist()
 def check_existing_verified_qr(doctype, docname, signed_by):
-	"""Get existing Verified QR for the given document and signer."""
+	"""Return Verified QR name if one exists for (doctype, docname, signed_by).
+
+	Caller must have read permission on the target document — prevents random
+	users from probing whether other documents have been signed.
+	"""
+	if not frappe.has_permission(doctype, "read", docname):
+		frappe.throw("Not permitted.", frappe.PermissionError)
 	criteria = {"ref_doctype": doctype, "ref_docname": docname, "signed_by": signed_by}
-	exist = frappe.db.exists("Verified QR", criteria)
-	return exist
+	return frappe.db.exists("Verified QR", criteria)
