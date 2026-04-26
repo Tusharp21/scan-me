@@ -25,11 +25,11 @@ PFX_PASSWORD_KEY = "scan_me_signing_password"
 # ---------------------------------------------------------------------------
 
 
-def _pfx_path():
+def _pfx_path() -> str:
 	return os.path.join(frappe.get_site_path(), PFX_RELATIVE)
 
 
-def _get_or_create_password():
+def _get_or_create_password() -> str:
 	password = frappe.conf.get(PFX_PASSWORD_KEY)
 	if password:
 		return password
@@ -41,7 +41,7 @@ def _get_or_create_password():
 	return password
 
 
-def _company_name():
+def _company_name() -> str:
 	"""Pick a sensible CN/O for the cert — company from Global Defaults, else site name."""
 	try:
 		default_company = frappe.db.get_single_value("Global Defaults", "default_company")
@@ -52,7 +52,7 @@ def _company_name():
 	return frappe.local.site or "Scan Me"
 
 
-def _generate_self_signed_pfx(password):
+def _generate_self_signed_pfx(password: str) -> None:
 	"""Write a fresh self-signed PKCS#12 bundle to the PFX path."""
 	from cryptography import x509
 	from cryptography.hazmat.primitives import hashes, serialization
@@ -111,12 +111,12 @@ def _generate_self_signed_pfx(password):
 
 	path = _pfx_path()
 	os.makedirs(os.path.dirname(path), exist_ok=True)
-	with open(path, "wb") as fh:
+	with open(path, "wb") as fh:  # nosemgrep: frappe-security-file-traversal
 		fh.write(pfx_bytes)
 	os.chmod(path, 0o600)
 
 
-def ensure_signing_cert():
+def ensure_signing_cert() -> tuple[str, str]:
 	"""Make sure a PKCS#12 bundle exists. Returns (path, password)."""
 	password = _get_or_create_password()
 	path = _pfx_path()
@@ -130,7 +130,12 @@ def ensure_signing_cert():
 # ---------------------------------------------------------------------------
 
 
-def sign_pdf(pdf_bytes, doctype, name, signers=None):
+def sign_pdf(
+	pdf_bytes: bytes,
+	doctype: str,
+	name: str,
+	signers: list[dict] | None = None,
+) -> bytes:
 	"""Apply a PAdES signature to ``pdf_bytes`` and return the signed bytes.
 
 	``signers`` is an optional list of dicts (from _fetch_signature_records)

@@ -1,6 +1,7 @@
 # Copyright (c) 2025, Tushar Patel and contributors
 # For license information, please see license.txt
 import base64
+import re
 from io import BytesIO
 from urllib.request import urlopen
 
@@ -11,15 +12,106 @@ from barcode.writer import ImageWriter
 from frappe.utils import get_url, get_url_to_form
 from PIL import Image
 
+from scan_me.utils.verification import build_qr_payload
 
-@frappe.whitelist()
-def qr(data, clearity=8, border=4, fill_color="black", back_color="white", include_logo=False):
-	"""Generate a real-time QR code as base64."""
-	if not data:
-		raise ValueError("QR: data cannot be empty")
+# ---------------------------------------------------------------------------
+# Input bounds
+# ---------------------------------------------------------------------------
+# All of the functions below are ``@frappe.whitelist(allow_guest=False)`` so any authenticated
+# user can call them over HTTP. Unbounded numeric params let a caller request
+# a huge PNG (``clearity=100000``) and exhaust server memory; unbounded
+# ``size`` strings let them break out of the ``style="..."`` attribute we
+# emit on <img> tags. These caps are generous for legitimate template use
+# but tight enough to make abuse uninteresting.
+MIN_BOX_SIZE = 1
+MAX_BOX_SIZE = 20
+MIN_BORDER = 0
+MAX_BORDER = 10
+# QR v40 alphanumeric capacity is 4296 chars; 2953 bytes is the byte-mode
+# ceiling. We cap slightly below to keep error-correction headroom.
+MAX_QR_DATA_BYTES = 2953
+MIN_MODULE_WIDTH = 0.1
+MAX_MODULE_WIDTH = 5.0
+MIN_MODULE_HEIGHT = 1.0
+MAX_MODULE_HEIGHT = 200.0
+MIN_QUIET_ZONE = 0.0
+MAX_QUIET_ZONE = 20.0
+MIN_FONT_SIZE = 0
+MAX_FONT_SIZE = 48
 
-	qr_obj = qrcode.QRCode(version=1, box_size=int(clearity), border=int(border))
-	qr_obj.add_data(str(data))
+# Deliberately narrow: digits (up to 4), optional fractional part, then one
+# of a closed set of units. Any character outside this set in the ``size``
+# argument could be smuggled through the <img style="..."> attribute to
+# enable CSS-based layout abuse or exfiltration via background:url().
+CSS_SIZE_RE = re.compile(r"^\d{1,4}(\.\d+)?(mm|cm|px|pt|in|em|rem|%)$")
+
+
+def _clamp_int(value, *, lo: int, hi: int, name: str) -> int:
+	try:
+		v = int(value)
+	except (TypeError, ValueError):
+		frappe.throw(frappe._("{0} must be an integer.").format(name))
+	if v < lo or v > hi:
+		frappe.throw(frappe._("{0} must be between {1} and {2}.").format(name, lo, hi))
+	return v
+
+
+def _clamp_float(value, *, lo: float, hi: float, name: str) -> float:
+	try:
+		v = float(value)
+	except (TypeError, ValueError):
+		frappe.throw(frappe._("{0} must be a number.").format(name))
+	if v < lo or v > hi:
+		frappe.throw(frappe._("{0} must be between {1} and {2}.").format(name, lo, hi))
+	return v
+
+
+def _sanitize_css_size(size, *, name: str = "size") -> str:
+	s = "" if size is None else str(size).strip()
+	if not CSS_SIZE_RE.match(s):
+		frappe.throw(frappe._("{0} must look like '30mm', '100px', '50%', etc.").format(name))
+	return s
+
+
+def _check_qr_data(data, *, name: str = "data") -> str:
+	if data is None or (isinstance(data, str) and not data.strip()):
+		frappe.throw(frappe._("{0} cannot be empty.").format(name))
+	s = str(data)
+	if len(s.encode("utf-8")) > MAX_QR_DATA_BYTES:
+		frappe.throw(
+			frappe._("{0} is too long to encode in a QR (max {1} bytes).").format(name, MAX_QR_DATA_BYTES)
+		)
+	return s
+
+
+# ---------------------------------------------------------------------------
+# QR and barcode generators
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist(allow_guest=False)
+def qr(
+	data,
+	clearity: int = 8,
+	border: int = 4,
+	fill_color: str = "black",
+	back_color: str = "white",
+	include_logo: bool = False,
+) -> str:
+	"""Render a QR code PNG as a ``data:image/png;base64,...`` URI.
+
+	``clearity`` is ``qrcode``'s ``box_size`` (pixels per module). ``border``
+	is the quiet-zone width in modules. Colors accept any Pillow color name
+	or hex string. ``include_logo`` overlays the site's ``Website Settings``
+	app logo in the QR centre — logo fetch failures are logged and the plain
+	QR is returned, so a broken logo never breaks print rendering.
+	"""
+	payload = _check_qr_data(data)
+	box_size = _clamp_int(clearity, lo=MIN_BOX_SIZE, hi=MAX_BOX_SIZE, name="clearity")
+	border_px = _clamp_int(border, lo=MIN_BORDER, hi=MAX_BORDER, name="border")
+
+	qr_obj = qrcode.QRCode(version=1, box_size=box_size, border=border_px)
+	qr_obj.add_data(payload)
 	qr_obj.make(fit=True)
 	img = qr_obj.make_image(fill_color=fill_color, back_color=back_color).convert("RGBA")
 
@@ -42,17 +134,33 @@ def qr(data, clearity=8, border=4, fill_color="black", back_color="white", inclu
 	return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
 
 
-@frappe.whitelist()
-def barcode(data, barcode_type="code128", module_width=0.2, module_height=15, font_size=10, quiet_zone=2):
-	"""Generate a real-time barcode as base64.
-	If invalid type or value, return blank.
-	"""
+@frappe.whitelist(allow_guest=False)
+def barcode(
+	data,
+	barcode_type: str = "code128",
+	module_width: float = 0.2,
+	module_height: float = 15,
+	font_size: int = 10,
+	quiet_zone: float = 2,
+) -> str:
+	"""Render a barcode PNG as a ``data:image/png;base64,...`` URI.
 
+	Returns an empty string for an unknown ``barcode_type`` or a value that
+	the chosen type rejects (e.g. letters in an EAN-13), so templates can
+	fall back gracefully. Numeric bounds are validated up front — a huge
+	``module_height`` would otherwise let a caller request a multi-gigabyte
+	PNG.
+	"""
 	if not data or not str(data).strip():
 		return ""
 
+	mw = _clamp_float(module_width, lo=MIN_MODULE_WIDTH, hi=MAX_MODULE_WIDTH, name="module_width")
+	mh = _clamp_float(module_height, lo=MIN_MODULE_HEIGHT, hi=MAX_MODULE_HEIGHT, name="module_height")
+	qz = _clamp_float(quiet_zone, lo=MIN_QUIET_ZONE, hi=MAX_QUIET_ZONE, name="quiet_zone")
+	fs = _clamp_int(font_size, lo=MIN_FONT_SIZE, hi=MAX_FONT_SIZE, name="font_size")
+
 	try:
-		BarcodeClass = get_barcode_class(barcode_type.lower())
+		BarcodeClass = get_barcode_class(str(barcode_type).lower())
 	except Exception:
 		return ""  # Invalid barcode type
 
@@ -61,10 +169,10 @@ def barcode(data, barcode_type="code128", module_width=0.2, module_height=15, fo
 		writer = ImageWriter()
 		writer.set_options(
 			{
-				"module_width": float(module_width),
-				"module_height": float(module_height),
-				"quiet_zone": float(quiet_zone),
-				"font_size": int(font_size),
+				"module_width": mw,
+				"module_height": mh,
+				"quiet_zone": qz,
+				"font_size": fs,
 			}
 		)
 
@@ -74,11 +182,18 @@ def barcode(data, barcode_type="code128", module_width=0.2, module_height=15, fo
 		return ""  # Invalid value for the given type
 
 
-@frappe.whitelist()
-def qr_link(doctype, name, clearity=8, fill_color="black", back_color="white", include_logo=False):
-	"""Generate QR code for the document using the correct desk URL."""
+@frappe.whitelist(allow_guest=False)
+def qr_link(
+	doctype: str,
+	name: str,
+	clearity: int = 8,
+	fill_color: str = "black",
+	back_color: str = "white",
+	include_logo: bool = False,
+) -> str:
+	"""QR of the document's desk URL. Throws if ``doctype`` or ``name`` is empty."""
 	if not (doctype and name):
-		raise ValueError("doctype and name are required")
+		frappe.throw(frappe._("doctype and name are required."))
 
 	doc_url = get_url_to_form(doctype, name)
 
@@ -93,11 +208,24 @@ def qr_link(doctype, name, clearity=8, fill_color="black", back_color="white", i
 # ---------------------------------------------------------------------------
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=False)
 def qr_img(
-	data, clearity=8, border=4, fill_color="black", back_color="white", include_logo=False, size="30mm"
-):
-	"""Return an <img class="scan-me-qr"> tag for the QR code."""
+	data,
+	clearity: int = 8,
+	border: int = 4,
+	fill_color: str = "black",
+	back_color: str = "white",
+	include_logo: bool = False,
+	size: str = "30mm",
+) -> str:
+	"""``<img class="scan-me-qr">`` wrapping :func:`qr`.
+
+	``size`` is validated against a strict unit regex because the value is
+	interpolated into the emitted ``style="..."`` attribute — without
+	validation a caller could smuggle extra CSS declarations (or close the
+	attribute and inject markup) through this argument.
+	"""
+	safe_size = _sanitize_css_size(size)
 	src = qr(
 		data,
 		clearity=clearity,
@@ -106,14 +234,21 @@ def qr_img(
 		back_color=back_color,
 		include_logo=include_logo,
 	)
-	return f'<img class="scan-me-qr" src="{src}" style="width:{size}; height:{size};">'
+	return f'<img class="scan-me-qr" src="{src}" style="width:{safe_size}; height:{safe_size};">'
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=False)
 def qr_link_img(
-	doctype, name, clearity=8, fill_color="black", back_color="white", include_logo=False, size="30mm"
-):
-	"""Return an <img class="scan-me-qr"> tag pointing to the document's desk form."""
+	doctype: str,
+	name: str,
+	clearity: int = 8,
+	fill_color: str = "black",
+	back_color: str = "white",
+	include_logo: bool = False,
+	size: str = "30mm",
+) -> str:
+	"""``<img class="scan-me-qr">`` wrapping :func:`qr_link`. ``size`` is validated."""
+	safe_size = _sanitize_css_size(size)
 	src = qr_link(
 		doctype,
 		name,
@@ -122,25 +257,29 @@ def qr_link_img(
 		back_color=back_color,
 		include_logo=include_logo,
 	)
-	return f'<img class="scan-me-qr" src="{src}" style="width:{size}; height:{size};">'
+	return f'<img class="scan-me-qr" src="{src}" style="width:{safe_size}; height:{safe_size};">'
 
 
 # ---------------------------------------------------------------------------
-# Verification-aware helpers — encode the Verified QR payload (uuid|hash)
+# Verification-aware helpers — encode the Verified QR payload (uuid|hash|sig)
 # so third parties can validate integrity via /verify_document.
 # ---------------------------------------------------------------------------
 
 
-@frappe.whitelist()
-def verify_qr(doctype, name, clearity=6, border=2, fill_color="black", back_color="white"):
+@frappe.whitelist(allow_guest=False)
+def verify_qr(
+	doctype: str,
+	name: str,
+	clearity: int = 6,
+	border: int = 2,
+	fill_color: str = "black",
+	back_color: str = "white",
+) -> str:
 	"""Return a QR data-URI encoding the Verified QR payload for this document.
 
-	- If a Verified QR exists and `enable_content_hash` is on, payload is ``uuid|hash``.
-	- If a Verified QR exists without hash, payload is just the ``uuid``.
+	- If a Verified QR exists, payload is the signed ``uuid|hash|sig`` triple.
 	- If no Verified QR exists, returns an empty string (caller should not render).
 	"""
-	from scan_me.utils.verification import build_qr_payload
-
 	record = frappe.db.get_value(
 		"Verified QR",
 		{"ref_doctype": doctype, "ref_docname": name},
@@ -154,10 +293,17 @@ def verify_qr(doctype, name, clearity=6, border=2, fill_color="black", back_colo
 	return qr(payload, clearity=clearity, border=border, fill_color=fill_color, back_color=back_color)
 
 
-@frappe.whitelist()
-def verify_qr_img(doctype, name, size="30mm", clearity=6, border=2):
-	"""<img class="scan-me-qr"> for verify_qr. Empty string if the doc has no Verified QR."""
+@frappe.whitelist(allow_guest=False)
+def verify_qr_img(
+	doctype: str,
+	name: str,
+	size: str = "30mm",
+	clearity: int = 6,
+	border: int = 2,
+) -> str:
+	"""``<img class="scan-me-qr">`` for :func:`verify_qr`. Empty string if no QR exists."""
+	safe_size = _sanitize_css_size(size)
 	src = verify_qr(doctype, name, clearity=clearity, border=border)
 	if not src:
 		return ""
-	return f'<img class="scan-me-qr" src="{src}" style="width:{size}; height:{size};">'
+	return f'<img class="scan-me-qr" src="{src}" style="width:{safe_size}; height:{safe_size};">'

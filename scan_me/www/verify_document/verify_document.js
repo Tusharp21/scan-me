@@ -135,11 +135,15 @@
 
 		renderLoading();
 
-		fetch(
-			"/api/method/scan_me.api.verify_document_qr.verify_document_qr?uuid=" +
-				encodeURIComponent(cleaned),
-			{ credentials: "same-origin", headers: { Accept: "application/json" } }
-		)
+		// POST-only endpoint. URLSearchParams auto-sets
+		// Content-Type: application/x-www-form-urlencoded so Frappe's form_dict
+		// picks up ``uuid`` transparently.
+		fetch("/api/method/scan_me.api.verify_document_qr.verify_document_qr", {
+			method: "POST",
+			credentials: "same-origin",
+			headers: { Accept: "application/json" },
+			body: new URLSearchParams({ uuid: cleaned }),
+		})
 			.then(function (res) {
 				if (res.status === 429) {
 					renderState("invalid", {
@@ -196,7 +200,6 @@
 		if (d.ref_docname) pairs.push(["Reference", d.ref_docname, true]);
 		if (d.signed_on) pairs.push(["Signed On", d.signed_on, true]);
 		if (d.signed_by_name) pairs.push(["Signed By", d.signed_by_name, true]);
-		if (d.signed_by_email) pairs.push(["Email", d.signed_by_email, true]);
 		if (d.unique_id) pairs.push(["Verification ID", d.unique_id, false]);
 		if (d.stored_hash) pairs.push(["Signed Hash", d.stored_hash, false]);
 		if (d.current_hash) pairs.push(["Current Hash", d.current_hash, false]);

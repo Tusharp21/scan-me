@@ -10,6 +10,7 @@
   "created_on",
   "column_break_lbjb",
   "content_hash",
+  "valid_until",
   "section_break_xxeh",
   "ref_doctype",
   "column_break_ferq",
@@ -102,6 +103,13 @@
    "label": "Content Hash (SHA-256)",
    "read_only": 1,
    "description": "SHA-256 of document content captured at sign time. Used for tamper detection."
+  },
+  {
+   "fieldname": "valid_until",
+   "fieldtype": "Date",
+   "label": "Valid Until",
+   "read_only": 1,
+   "description": "Last day this QR is accepted by the public /verify_document page. Empty means no expiry. Populated from Scan Me Settings → 'Verified QR Validity (Days)' at sign time."
   }
  ],
  "grid_page_length": 50,
@@ -125,6 +133,12 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "if_owner": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Desk User"
   }
  ],
  "row_format": "Dynamic",

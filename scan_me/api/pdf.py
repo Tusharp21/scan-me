@@ -2,10 +2,10 @@
 # For license information, please see license.txt
 import base64
 import json
-import os
 import re
 from io import BytesIO
 from mimetypes import guess_type
+from pathlib import Path
 
 import frappe
 from playwright.sync_api import sync_playwright
@@ -50,8 +50,21 @@ DEFAULT_OPTIONS = {
 # Sentinel passed by the client when the user picked the "Document Status" watermark
 # mode — the server resolves the actual label from the doc at render time.
 WATERMARK_STATUS_TOKEN = "__status__"
-# docstatus int → watermark label fallback when the doctype has no ``status`` field.
-DOCSTATUS_LABELS = {0: "DRAFT", 1: "", 2: "CANCELLED"}
+
+
+def _docstatus_label(docstatus: int) -> str:
+	"""Watermark label for a submittable doc with no ``status`` field.
+
+	Intentionally a function (not a module-level dict) so ``frappe._`` runs
+	per-request against the caller's locale — caching the translated string
+	at import time would pin every render to whatever language happened to
+	be active the first time this module was loaded.
+	"""
+	if docstatus == 0:
+		return frappe._("Draft").upper()
+	if docstatus == 2:
+		return frappe._("Cancelled").upper()
+	return ""
 
 
 def _parse_options(raw):
@@ -149,7 +162,7 @@ def _inject_qr_if_needed(body_html, opts, doctype, name):
 		qr_data = _resolve_qr_data(opts, doctype, name)
 		qr_src = _qr(qr_data, clearity=6, border=2)
 	except Exception:
-		frappe.log_error(frappe.get_traceback(), "Chrome PDF: QR generation failed")
+		frappe.log_error("Chrome PDF: QR generation failed", frappe.get_traceback())
 		return body_html
 
 	position = opts.get("qr_position") or "Top Right"
@@ -191,7 +204,7 @@ def _resolve_watermark_text(raw, doctype, name):
 	status = doc.get("status")
 	if status:
 		return str(status).upper()
-	return DOCSTATUS_LABELS.get(getattr(doc, "docstatus", 0), "")
+	return _docstatus_label(getattr(doc, "docstatus", 0))
 
 
 def _inject_watermark(body_html, opts, doctype, name):
@@ -224,7 +237,7 @@ def _inject_watermark(body_html, opts, doctype, name):
 
 
 # ---------------------------------------------------------------------------
-# Signature block
+# Signature stamp
 # ---------------------------------------------------------------------------
 
 
@@ -245,11 +258,12 @@ def _fetch_signature_records(doctype, name):
 
 	current_hash = None
 	try:
-		from scan_me.utils.verification import compute_doc_hash
+		from scan_me.utils.verification import compute_doc_hash, verify_stored_hash
 
 		current_hash = compute_doc_hash(doctype, name)
 	except Exception:
 		current_hash = None
+		verify_stored_hash = None  # type: ignore[assignment]
 
 	results = []
 	for r in rows:
@@ -279,8 +293,14 @@ def _fetch_signature_records(doctype, name):
 			except Exception:
 				info["signed_on"] = str(ts)
 
-		if r.content_hash and current_hash:
-			info["tamper_status"] = "verified" if r.content_hash == current_hash else "tampered"
+		if r.content_hash and current_hash and verify_stored_hash:
+			# verify_stored_hash transparently handles both the v1:HMAC
+			# format (for records signed after the hash-wrapping rollout)
+			# and legacy plain-sha256 records (pre-v1).
+			matches = verify_stored_hash(
+				r.content_hash, doctype, name, r.signed_by, current_plain=current_hash
+			)
+			info["tamper_status"] = "verified" if matches else "tampered"
 			info["current_hash"] = current_hash
 		elif r.content_hash:
 			info["tamper_status"] = "unknown"  # couldn't compute current hash
@@ -292,118 +312,141 @@ def _fetch_signature_records(doctype, name):
 	return results
 
 
-def _build_signature_card(info):
-	"""Acrobat Sign-style signature card.
+def _build_page_stamp_overlay_html(record):
+	"""A4 transparent page with a PlotSoft-style 'Signature valid' stamp at bottom-right.
 
-	Layout: handwritten signature image top, horizontal rule, signer name in
-	bold, email, signed date, verification ID. Footer strip shows content-hash
-	status. Subtle border, no bright colors unless the signature is tampered.
+	Rendered once with Playwright and then merged onto every page of the main
+	PDF via :func:`_apply_signature_stamp_to_pages`. Green border + checkmark
+	when the content hash matches; red border + cross when the document has
+	been modified since signing.
 	"""
 	esc = frappe.utils.escape_html
-	status = info.get("tamper_status") or "unhashed"
+	status = record.get("tamper_status") or "unhashed"
+	tampered = status == "tampered"
 
-	# --- status banner -------------------------------------------------
-	if status == "tampered":
-		banner = (
-			'<div style="background:#fef2f2; border-left:4px solid #dc2626; '
-			'padding:3mm 4mm; margin-bottom:3mm;">'
-			'<div style="font-size:11px; font-weight:bold; color:#991b1b; letter-spacing:0.5px;">'
-			"&#9888; SIGNATURE INVALIDATED"
-			"</div>"
-			'<div style="font-size:9px; color:#7f1d1d; margin-top:1mm;">'
-			"The document has been modified since this signature was applied."
-			"</div>"
-			"</div>"
-		)
-	elif status == "verified":
-		banner = (
-			'<div style="background:#eff6ff; border-left:4px solid #1d4ed8; '
-			'padding:3mm 4mm; margin-bottom:3mm;">'
-			'<div style="font-size:11px; font-weight:bold; color:#1e40af; letter-spacing:0.5px;">'
-			"&#10003; DIGITALLY SIGNED &amp; VERIFIED"
-			"</div>"
-			'<div style="font-size:9px; color:#1e40af; margin-top:1mm;">'
-			"Content hash matches. Document has not been altered since signing."
-			"</div>"
-			"</div>"
+	name = esc(record.get("full_name") or "Unknown")
+	date = esc(record.get("signed_on") or "")
+	uid = esc((record.get("unique_id") or "")[:18])
+
+	if tampered:
+		title = "Signature invalid"
+		border_color = "#dc2626"
+		title_color = "#991b1b"
+		mark_color = "#dc2626"
+		mark_svg = (
+			'<path d="M6 6 L26 26 M26 6 L6 26" stroke="currentColor" '
+			'stroke-width="5" stroke-linecap="round" fill="none"/>'
 		)
 	else:
-		banner = ""
-
-	# --- signature image (prominent, Acrobat-style) --------------------
-	signature_block = ""
-	if info.get("signature"):
-		sig_style = "max-width:70mm; max-height:22mm; display:block; margin:0;"
-		if status == "tampered":
-			sig_style += " opacity:0.55; filter:grayscale(0.6);"
-		signature_block = (
-			'<div style="margin-bottom:1mm;">'
-			f'<img src="{esc(info["signature"])}" style="{sig_style}">'
-			"</div>"
-			'<div style="border-bottom:1px solid #374151; width:75mm; margin-bottom:2mm;"></div>'
-		)
-	else:
-		# No image — still render a signature line placeholder.
-		signature_block = (
-			'<div style="border-bottom:1px solid #374151; width:75mm; height:22mm; '
-			'margin-bottom:2mm; display:flex; align-items:flex-end; padding-bottom:1mm; '
-			'font-family:\'Brush Script MT\', cursive; font-size:22px; color:#374151;">'
-			f"{esc(info.get('full_name', ''))}"
-			"</div>"
+		title = "Signature valid"
+		border_color = "#059669"
+		title_color = "#111827"
+		mark_color = "#059669"
+		mark_svg = (
+			'<path d="M5 17 L13 25 L28 8" stroke="currentColor" '
+			'stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
 		)
 
-	# --- signer block --------------------------------------------------
-	hash_line = ""
-	if info.get("content_hash"):
-		hash_line = (
-			'<div style="margin-top:2mm; padding-top:2mm; border-top:1px dashed #d1d5db; '
-			'font-size:8px; color:#6b7280; font-family:monospace; word-break:break-all;">'
-			f'<b>Document Hash (SHA-256):</b> {esc(info["content_hash"])}'
-			"</div>"
-		)
-		if status == "tampered" and info.get("current_hash"):
-			hash_line += (
-				'<div style="font-size:8px; color:#dc2626; font-family:monospace; '
-				'word-break:break-all; margin-top:1mm;">'
-				f'<b>Current Hash:</b> {esc(info["current_hash"])} (mismatch)'
-				"</div>"
+	return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  @page {{ size: A4; margin: 0; }}
+  html, body {{ margin:0; padding:0; width:210mm; height:297mm; background:transparent; }}
+  body {{ position: relative; }}
+  .sm-stamp-box {{
+    position: absolute;
+    right: 10mm;
+    bottom: 18mm;
+    width: 80mm;
+    min-height: 24mm;
+    border: 1.4px solid {border_color};
+    background: #ffffff;
+    padding: 3mm 26mm 3mm 4mm;
+    font-family: Arial, Helvetica, sans-serif;
+    box-sizing: border-box;
+    overflow: hidden;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }}
+  .sm-stamp-title {{
+    font-size: 13px;
+    font-weight: 900;
+    color: {title_color};
+    margin-bottom: 1.2mm;
+    letter-spacing: 0.2px;
+  }}
+  .sm-stamp-line {{
+    font-size: 9px;
+    color: #374151;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }}
+  .sm-stamp-mark {{
+    position: absolute;
+    right: 2mm;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20mm;
+    height: 20mm;
+    color: {mark_color};
+    opacity: 0.85;
+  }}
+</style></head>
+<body>
+  <div class="sm-stamp-box">
+    <div class="sm-stamp-title">{title}</div>
+    <div class="sm-stamp-line">Digitally signed by <b>{name}</b></div>
+    <div class="sm-stamp-line">Date: {date}</div>
+    <div class="sm-stamp-line">Reason: Document authenticity</div>
+    <div class="sm-stamp-line">ID: {uid}</div>
+    <svg class="sm-stamp-mark" viewBox="0 0 32 32">{mark_svg}</svg>
+  </div>
+</body></html>"""
+
+
+def _apply_signature_stamp_to_pages(pdf_bytes, records, browser):
+	"""Overlay the 'Signature valid' stamp on every page of the input PDF.
+
+	Uses the most recent signer only — the stamp is a fixed-size visual marker,
+	so multi-signer rendering isn't supported here. On any failure we log and
+	return the original bytes so the user still gets a usable PDF.
+	"""
+	if not records:
+		return pdf_bytes
+
+	try:
+		stamp_page = browser.new_page()
+		try:
+			stamp_page.set_content(
+				_build_page_stamp_overlay_html(records[-1]), wait_until="load", timeout=10000
 			)
+			stamp_page.emulate_media(media="print")
+			stamp_pdf_bytes = stamp_page.pdf(
+				format="A4",
+				print_background=True,
+				margin={"top": "0", "bottom": "0", "left": "0", "right": "0"},
+			)
+		finally:
+			stamp_page.close()
+	except Exception:
+		frappe.log_error("Scan Me: signature stamp render failed", frappe.get_traceback())
+		return pdf_bytes
 
-	return (
-		'<div style="margin-top:6mm; padding:5mm 6mm; border:1px solid #9ca3af; '
-		'background:#ffffff; page-break-inside:avoid; break-inside:avoid; '
-		'font-family:Calibri,Arial,sans-serif;">'
-		f"{banner}"
-		f"{signature_block}"
-		'<div style="font-size:14px; font-weight:bold; color:#111827; line-height:1.2;">'
-		f'{esc(info.get("full_name", ""))}'
-		"</div>"
-		'<div style="font-size:10px; color:#4b5563; margin-top:0.5mm;">'
-		f'{esc(info.get("email", ""))}'
-		"</div>"
-		'<div style="font-size:10px; color:#4b5563; margin-top:2mm;">'
-		f'Signed: <b>{esc(info.get("signed_on", ""))}</b>'
-		"</div>"
-		'<div style="font-size:9px; color:#6b7280; margin-top:1mm; font-family:monospace;">'
-		f'Signature ID: {esc(info.get("unique_id", ""))}'
-		"</div>"
-		f"{hash_line}"
-		"</div>"
-	)
-
-
-def _build_signature_block(records):
-	"""Wrapping container for one or many signature cards."""
-	cards = "".join(_build_signature_card(r) for r in records)
-	header = ""
-	if len(records) > 1:
-		header = (
-			'<div style="font-size:12px; font-weight:bold; color:#333; letter-spacing:1px; '
-			'margin-bottom:2mm; padding-top:10mm;">SIGNATURES (' + str(len(records)) + ")</div>"
-		)
-	else:
-		header = '<div style="padding-top:10mm;"></div>'
-	return f'<div class="sm-signature-block">{header}{cards}</div>'
+	try:
+		reader = PdfReader(BytesIO(pdf_bytes))
+		stamp_reader = PdfReader(BytesIO(stamp_pdf_bytes))
+		overlay = stamp_reader.pages[0]
+		writer = PdfWriter()
+		for page_obj in reader.pages:
+			page_obj.merge_page(overlay)
+			writer.add_page(page_obj)
+		out = BytesIO()
+		writer.write(out)
+		return out.getvalue()
+	except Exception:
+		frappe.log_error("Scan Me: signature stamp overlay failed", frappe.get_traceback())
+		return pdf_bytes
 
 
 def _attach_pdf_to_doc(pdf_bytes, safe_name, doctype, name):
@@ -416,8 +459,8 @@ def _attach_pdf_to_doc(pdf_bytes, safe_name, doctype, name):
 	"""
 	if not frappe.has_permission(doctype, "write", name):
 		frappe.log_error(
-			f"User {frappe.session.user} tried to attach PDF without write access to {doctype} {name}",
 			"Scan Me: attach PDF denied",
+			f"User {frappe.session.user} tried to attach PDF without write access to {doctype} {name}",
 		)
 		return
 
@@ -433,7 +476,7 @@ def _attach_pdf_to_doc(pdf_bytes, safe_name, doctype, name):
 		)
 		frappe.db.commit()  # ensure the File row persists even with response streaming
 	except Exception:
-		frappe.log_error(frappe.get_traceback(), "Scan Me: attach PDF failed")
+		frappe.log_error("Scan Me: attach PDF failed", frappe.get_traceback())
 
 
 def _maybe_pades_sign(pdf_bytes, opts, doctype, name):
@@ -459,25 +502,8 @@ def _maybe_pades_sign(pdf_bytes, opts, doctype, name):
 		signers = _fetch_signature_records(doctype, name) or None
 		return sign_pdf(pdf_bytes, doctype, name, signers=signers)
 	except Exception:
-		frappe.log_error(frappe.get_traceback(), "Scan Me: PAdES signing failed")
+		frappe.log_error("Scan Me: PAdES signing failed", frappe.get_traceback())
 		return pdf_bytes
-
-
-def _inject_signature_block(body_html, opts, doctype, name):
-	"""Append or prepend the signature block. Silently skips if no Verified QRs."""
-	if not opts.get("append_signature"):
-		return body_html
-
-	records = _fetch_signature_records(doctype, name)
-	if not records:
-		return body_html
-
-	block = embed_images(_build_signature_block(records))
-	# Signature block always lands at end of document — the Advanced Print
-	# page no longer exposes a position control.
-	if re.search(r"</body>", body_html, re.IGNORECASE):
-		return re.sub(r"</body>", block + "</body>", body_html, count=1, flags=re.IGNORECASE)
-	return body_html + block
 
 
 # ---------------------------------------------------------------------------
@@ -495,40 +521,54 @@ def get_base64_data_uri(file_url):
 	if not file_url or file_url.startswith("data:"):
 		return file_url or ""
 
-	site_path = os.path.realpath(frappe.get_site_path())
-	bench_path = os.path.realpath(os.path.join(site_path, ".."))
+	# NUL bytes in paths are a classic ``open()`` smuggling trick (the C-level
+	# truncation can make security checks on one string apply to a different
+	# file). Reject early rather than rely on the Python runtime to catch it.
+	if "\x00" in file_url:
+		return file_url
+
+	# nosemgrep: frappe-security-file-traversal
+	site_path = Path(frappe.get_site_path()).resolve()
+	bench_path = site_path.parent  # nosemgrep: frappe-security-file-traversal
 	disk_path = None
 
 	if file_url.startswith("/private/files/"):
-		disk_path = os.path.join(site_path, "private", "files", file_url.split("/private/files/", 1)[1])
+		disk_path = site_path / "private" / "files" / file_url.split("/private/files/", 1)[1]
 	elif file_url.startswith("/files/"):
-		disk_path = os.path.join(site_path, "public", "files", file_url.split("/files/", 1)[1])
+		disk_path = site_path / "public" / "files" / file_url.split("/files/", 1)[1]
 	elif file_url.startswith("/assets/"):
-		disk_path = os.path.join(bench_path, "sites", file_url.lstrip("/"))
-		if not os.path.exists(disk_path):
-			disk_path = os.path.join(bench_path, file_url.lstrip("/"))
+		disk_path = bench_path / "sites" / file_url.lstrip("/")
+		if not disk_path.exists():
+			disk_path = bench_path / file_url.lstrip("/")
+	# Fallback matches — catch URLs that embed a ``/private/files/`` or
+	# ``/files/`` segment deeper in the path. Kept for compatibility with
+	# odd renderings; the containment check below is still the real gate.
 	elif "/private/files/" in file_url:
-		disk_path = os.path.join(site_path, "private", "files", file_url.split("/private/files/", 1)[1])
+		disk_path = site_path / "private" / "files" / file_url.split("/private/files/", 1)[1]
 	elif "/files/" in file_url:
-		disk_path = os.path.join(site_path, "public", "files", file_url.split("/files/", 1)[1])
+		disk_path = site_path / "public" / "files" / file_url.split("/files/", 1)[1]
 
-	if not disk_path or not os.path.exists(disk_path):
+	if not disk_path or not disk_path.exists():
 		return file_url
 
-	# Contain the resolved path within allowed roots to block ``../`` escapes.
-	real = os.path.realpath(disk_path)
-	allowed_roots = (
-		os.path.join(site_path, "public", "files"),
-		os.path.join(site_path, "private", "files"),
-		os.path.join(bench_path, "sites", "assets"),
-		os.path.join(bench_path, "assets"),
-	)
-	if not any(real == root or real.startswith(root + os.sep) for root in allowed_roots):
+	# Contain the resolved path within allowed roots to block ``../`` escapes
+	# AND symlinks that point outside the allowlist. Both the candidate and
+	# each root are ``resolve()``d so a site whose ``public/files`` is itself
+	# a symlink (e.g. mounted storage) still accepts its own files, while
+	# resources whose realpath lands outside every allowed root are rejected.
+	real = disk_path.resolve()
+	allowed_roots = [
+		(site_path / "public" / "files").resolve(),
+		(site_path / "private" / "files").resolve(),
+		(bench_path / "sites" / "assets").resolve(),
+		(bench_path / "assets").resolve(),
+	]
+	if not any(real == root or real.is_relative_to(root) for root in allowed_roots):
 		return file_url
 
-	with open(real, "rb") as fh:
+	with open(real, "rb") as fh:  # nosemgrep: frappe-security-file-traversal
 		b64 = base64.b64encode(fh.read()).decode()
-		mime = guess_type(real)[0] or "image/png"
+		mime = guess_type(str(real))[0] or "image/png"
 		return f"data:{mime};base64,{b64}"
 
 
@@ -557,7 +597,7 @@ def embed_images(html):
 # ---------------------------------------------------------------------------
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=False)
 def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, options=None, preview_mode=0):
 	"""Generate a PDF using headless Chromium (Playwright).
 
@@ -567,13 +607,45 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 	- PDF streamed to browser — nothing saved to disk
 
 	``options`` is a JSON string from the print-preview dialog. Implemented:
-	multi-copy, QR injection, header/footer repeat modes, signature block
-	(Acrobat-style card pulled from Verified QR), and optional PAdES digital
-	signature via PyHanko (apply_pades; gated by enable_pades_signing in
-	Scan Me Settings).
+	multi-copy, QR injection, header/footer repeat modes, 'Signature valid'
+	stamp pulled from Verified QR, and optional PAdES digital signature via
+	PyHanko (apply_pades; gated by enable_pades_signing in Scan Me Settings).
 	"""
 	if not frappe.has_permission(doctype, "print", name):
-		frappe.throw("No permission to print this document.", frappe.PermissionError)
+		frappe.throw(frappe._("No permission to print this document."), frappe.PermissionError)
+
+	# Gate on the Scan Me Settings allowlist. Without this, any user with
+	# print permission on any doctype could route through this endpoint and
+	# get QR injection, watermark, and signature stamps applied — even for
+	# doctypes the admin never approved for Scan Me.
+	from scan_me.utils.verification import assert_allowed_doctype
+
+	assert_allowed_doctype(doctype)
+
+	# Reject a Print Format that was built for a different doctype. Without
+	# this, a caller with print permission on doctype A could invoke a format
+	# whose Jinja template targets doctype B — the template would then try to
+	# resolve B's fields against A's doc, producing unpredictable output and
+	# potentially leaking fragments the admin never intended to render here.
+	# Empty / None means "use the doctype's default format", and the literal
+	# ``Standard`` is Frappe's built-in pseudo-format (not a DB row) that
+	# renders every doctype with the stock template — both are always safe,
+	# so we only validate when a real, named Print Format is supplied.
+	print_format = (print_format or "").strip() or None
+	if print_format and print_format != "Standard":
+		pf_doctype = frappe.db.get_value("Print Format", print_format, "doc_type")
+		if pf_doctype is None:
+			frappe.throw(
+				frappe._("Print Format '{0}' does not exist.").format(print_format),
+				frappe.DoesNotExistError,
+			)
+		if pf_doctype != doctype:
+			frappe.throw(
+				frappe._("Print Format '{0}' is for '{1}', not '{2}'.").format(
+					print_format, pf_doctype, doctype
+				),
+				frappe.ValidationError,
+			)
 
 	opts = _parse_options(options)
 	copy_count = opts["copy_count"]
@@ -585,7 +657,10 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 		letter_head = None
 
 	if not frappe.db.exists(doctype, name):
-		frappe.throw(f"{doctype} {name} does not exist.", frappe.DoesNotExistError)
+		frappe.throw(
+			frappe._("{0} {1} does not exist.").format(doctype, name),
+			frappe.DoesNotExistError,
+		)
 
 	header_content, footer_content, header_h, footer_h = _get_letterhead_raw(letter_head)
 
@@ -609,7 +684,11 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 
 	body_html = _inject_watermark(body_html, opts, doctype, name)
 	body_html = _inject_qr_if_needed(body_html, opts, doctype, name)
-	body_html = _inject_signature_block(body_html, opts, doctype, name)
+
+	# Signature records drive the per-page 'Signature valid' stamp applied
+	# after rendering. The stamp always shows the most recent signer — it's a
+	# fixed-size overlay marker, not a multi-signer list.
+	sig_records = _fetch_signature_records(doctype, name) if opts.get("append_signature") else None
 
 	margins = {
 		"top": f"{effective_header_h + 5}mm",
@@ -640,17 +719,22 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 						footer_mode,
 					)
 				)
+
+			final_pdf = pdf_copies[0] if len(pdf_copies) == 1 else _merge_pdfs(pdf_copies)
+
+			# Per-page 'Signature valid' stamp. Must run while the browser is
+			# still alive since the overlay is rendered via Playwright.
+			if sig_records:
+				final_pdf = _apply_signature_stamp_to_pages(final_pdf, sig_records, browser)
 	except Exception:
-		frappe.log_error(frappe.get_traceback(), "Chrome PDF Generation Failed")
-		frappe.throw("PDF generation failed. Check Error Log for details.")
+		frappe.log_error("Chrome PDF Generation Failed", frappe.get_traceback())
+		frappe.throw(frappe._("PDF generation failed. Check Error Log for details."))
 	finally:
 		if browser:
 			try:
 				browser.close()
 			except Exception:
 				pass
-
-	final_pdf = pdf_copies[0] if len(pdf_copies) == 1 else _merge_pdfs(pdf_copies)
 
 	# Skip expensive crypto signing on live-preview requests — Adobe's signature
 	# panel isn't visible in the preview iframe anyway, and skipping saves ~300-500ms.

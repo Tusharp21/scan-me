@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#1d4ed8">
     <meta name="robots" content="noindex">
+    <!--
+        CSP lock-down for a public, unauthenticated page. The client renders every
+        server-supplied field via .textContent (no innerHTML), so XSS isn't an
+        active risk today — this policy is defense-in-depth so a future edit that
+        accidentally switches to innerHTML can't escalate, and so any third-party
+        script that gets injected (e.g. via a browser extension or HTML cache
+        poisoning) can't exfiltrate scanned UUIDs to an external endpoint.
+        data: is allowed for img-src because the scanner libs emit data URIs.
+        frame-ancestors is omitted — it cannot be set via <meta> and this page
+        isn't a high-value clickjacking target.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self' data:; form-action 'self'; base-uri 'self'; object-src 'none'">
+    <!--
+        no-referrer so a scanned UUID never leaks to any third-party origin the
+        user might click through to from the verify page.
+    -->
+    <meta name="referrer" content="no-referrer">
     <title>Verify Document</title>
     <link rel="stylesheet" href="verify_document.css">
     <script src="/assets/scan_me/js/html5-qrcode.min.js" defer></script>

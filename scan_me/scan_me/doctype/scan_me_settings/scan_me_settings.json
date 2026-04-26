@@ -18,6 +18,7 @@
   "enable_pades_signing",
   "signature_type",
   "watermark_mode",
+  "default_qr_validity_days",
   "tab_verify_page",
   "verify_page_section",
   "public_verify_detail",
@@ -90,7 +91,7 @@
    "fieldtype": "Check",
    "label": "Use Stored User Signature Only",
    "default": "0",
-   "description": "Server ignores any signature image sent by the browser and uses a signature stored on the User profile instead. Requires adding a Custom Field to the User doctype named one of: user_signature, signature, or signature_image. If none exists, the signature card renders without a handwritten image."
+   "description": "When on, any signature image sent by the browser is rejected — the server uses only the signature stored on the signer's User profile. When off, the server still prefers the stored signature if one exists and only falls back to the client-supplied image when the User has no stored signature (this prevents a user from submitting someone else's signature image). Requires a Custom Field on the User doctype named one of: user_signature, signature, or signature_image. The handwritten image is consumed only by PAdES digital signing — the on-page stamp does not display it."
   },
   {
    "fieldname": "enable_pades_signing",
@@ -105,7 +106,7 @@
    "label": "Signature Type",
    "options": "Visual Block\nCryptographic (PAdES)\nBoth",
    "default": "Visual Block",
-   "description": "What is applied when a user ticks \"Apply Signature\" on the Advanced Print page. Visual Block: Acrobat-style signature card inside the PDF. Cryptographic (PAdES): Adobe Reader signature panel (requires \"Apply Real Digital Signature\" above). Both: visual card plus PAdES."
+   "description": "What is applied when a user ticks \"Apply Signature\" on the Advanced Print page. Visual Block: 'Signature valid' stamp rendered on every page of the PDF. Cryptographic (PAdES): Adobe Reader signature panel (requires \"Apply Real Digital Signature\" above). Both: visual stamp plus PAdES."
   },
   {
    "fieldname": "watermark_mode",
@@ -114,6 +115,14 @@
    "options": "Disabled\nDocument Status\nCustom Text",
    "default": "Disabled",
    "description": "Controls the watermark option shown under the Copies section of the Advanced Print page. Disabled: no watermark option. Document Status: single checkbox — the watermark text is auto-taken from the document's status field (or Draft/Cancelled for submittable docs). Custom Text: checkbox plus a free-text input where the user types the watermark."
+  },
+  {
+   "fieldname": "default_qr_validity_days",
+   "fieldtype": "Int",
+   "label": "Verified QR Validity (Days)",
+   "default": "0",
+   "non_negative": 1,
+   "description": "How long a newly generated Verified QR stays valid, counted from the signing date. 0 (default) means the QR never expires. Applied at sign time only — changing this value does NOT retroactively expire existing QRs. The /verify_document page returns an 'expired' status for scans of an expired QR."
   },
   {
    "fieldname": "tab_verify_page",
@@ -132,7 +141,7 @@
    "label": "Detail Level Shown to Guests",
    "options": "Minimal\nStandard\nFull",
    "default": "Standard",
-   "description": "Minimal — only the status, document type, and date. Standard (recommended) — also shows document name, full timestamp, signer's name, and verification ID (no email). Full — also shows the signer's email and technical hashes on tampered results. Use Minimal or Standard to avoid exposing staff emails to the public."
+   "description": "Controls the maximum detail returned to callers who can already read the referenced document. Guests — and any logged-in user without read access to the target doc — always see only the status and signed-on date, regardless of this setting. Minimal: date only. Standard (recommended): document type, name, full timestamp, signer's name, and verification ID. Full: adds technical hashes on tampered results. The signer's email is never exposed by this endpoint."
   },
   {
    "fieldname": "tab_print_dialog",
@@ -182,7 +191,7 @@
    "fieldtype": "Check",
    "label": "Signature Block on PDF",
    "default": "1",
-   "description": "Lets users append an Adobe-style signature card and optionally apply a real cryptographic (PAdES) signature."
+   "description": "Lets users add a 'Signature valid' stamp on every page and optionally apply a real cryptographic (PAdES) signature."
   },
   {
    "fieldname": "show_live_preview",

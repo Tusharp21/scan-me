@@ -15,6 +15,25 @@ import frappe
 
 CHROMIUM_MARKER = "__chromium_installed_marker"
 
+# Caps on the Playwright install output captured into the Error Log on
+# failure. Playwright's stderr/stdout can embed proxy URLs (with creds),
+# $PATH fragments, and other environment specifics — logging the raw
+# output unbounded would be a liability. 2000 chars each is enough to see
+# the top traceback and the initial error context for diagnosis.
+_INSTALL_LOG_TAIL = 2000
+
+
+def _truncate_output(label: str, text: str) -> str:
+	"""Clip subprocess stderr/stdout so a long Playwright dump doesn't flood
+	the Error Log (and doesn't include more env info than a reader needs to
+	diagnose the failure)."""
+	if not text:
+		return f"{label}:\n(empty)"
+	text = text.strip()
+	if len(text) <= _INSTALL_LOG_TAIL:
+		return f"{label}:\n{text}"
+	return f"{label} (truncated — showing first {_INSTALL_LOG_TAIL} chars):\n{text[:_INSTALL_LOG_TAIL]}"
+
 
 def after_install():
 	"""Runs once after `bench install-app scan_me` finishes."""
@@ -39,15 +58,15 @@ def ensure_chromium(force=False):
 		import playwright
 	except ImportError:
 		frappe.log_error(
-			"Playwright is not installed. Run `bench setup requirements` to pick it up.",
 			"Scan Me: playwright missing",
+			"Playwright is not installed. Run `bench setup requirements` to pick it up.",
 		)
 		return
 
 	if not force and _chromium_cache_exists():
 		frappe.log_error(
-			"Chromium already cached — skipping download.",
 			"Scan Me: chromium present",
+			"Chromium already cached — skipping download.",
 		)
 		return
 
@@ -60,22 +79,28 @@ def ensure_chromium(force=False):
 		)
 		if result.returncode == 0:
 			frappe.log_error(
-				"Chromium downloaded for Scan Me PDF rendering.",
 				"Scan Me: chromium installed",
+				"Chromium downloaded for Scan Me PDF rendering.",
 			)
 			return
 
 		frappe.log_error(
-			f"Chromium install exited {result.returncode}.\nSTDERR:\n{result.stderr}",
 			"Scan Me: chromium install failed",
+			"\n\n".join(
+				[
+					f"Chromium install exited {result.returncode}.",
+					_truncate_output("STDERR", result.stderr),
+					_truncate_output("STDOUT", result.stdout),
+				]
+			),
 		)
 	except subprocess.TimeoutExpired:
 		frappe.log_error(
-			"Chromium download timed out after 10 minutes.",
 			"Scan Me: chromium install timeout",
+			"Chromium download timed out after 10 minutes.",
 		)
 	except Exception:
-		frappe.log_error(frappe.get_traceback(), "Scan Me: chromium install error")
+		frappe.log_error("Scan Me: chromium install error", frappe.get_traceback())
 
 	# If we got here, the auto-install failed — leave a message for the admin.
 	try:
