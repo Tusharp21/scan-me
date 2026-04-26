@@ -22,17 +22,17 @@ UUID_RATE_LIMIT_PER_WINDOW = 60
 
 
 def _uuid_rate_limit_ok(scanned_uuid):
-	"""Increment a per-UUID counter in Redis and return False when exceeded.
+	"""Increment a per-UUID counter in cache and return False when exceeded.
 
 	The cache key hashes the UUID (truncated) instead of using it raw so a
-	dump of Redis keys doesn't reveal the set of valid UUIDs in the system.
+	dump of cache keys doesn't reveal the set of valid UUIDs in the system.
+	Uses ``set_value``/``get_value`` so keys are site-prefixed — required for
+	correctness on multi-tenant benches.
 	"""
 	digest = hashlib.sha256(scanned_uuid.encode("utf-8")).hexdigest()[:16]
 	key = f"scan_me:verify:uuid:{digest}"
-	current = frappe.cache.get(key) or 0
-	if not current:
-		frappe.cache.setex(key, UUID_RATE_LIMIT_WINDOW_SECONDS, 0)
-	count = frappe.cache.incrby(key, 1)
+	count = (frappe.cache.get_value(key) or 0) + 1
+	frappe.cache.set_value(key, count, expires_in_sec=UUID_RATE_LIMIT_WINDOW_SECONDS)
 	return count <= UUID_RATE_LIMIT_PER_WINDOW
 
 
