@@ -11,7 +11,7 @@
  "page_name": "scan-me-print",
  "roles": [
   {
-   "role": "System User"
+   "role": "System Manager"
   }
  ],
  "script": "",

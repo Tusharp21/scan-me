@@ -24,14 +24,14 @@ bench get-app scan_me
 bench install-app scan_me
 ```
 
-Playwright's Chromium browser is downloaded automatically by the `after_install` hook so PDF generation works immediately.
+Playwright's `chromium-headless-shell` (~110 MB) is downloaded automatically by the `after_install` hook into `{bench_path}/playwright-browsers/` so PDF generation works immediately. The cache is bench-local (not user-global) so it survives Playwright pip upgrades and one cache serves the whole bench. `bench migrate` re-validates the cache; stale or partial downloads trigger a fresh install.
 
 ### Fallback — manual Chromium install
 
-If the auto-download fails, run this once on the server:
+If the auto-download fails, run this once on the server from your bench directory:
 
 ```bash
-./env/bin/python -m playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH=$(pwd)/playwright-browsers ./env/bin/python -m playwright install chromium-headless-shell
 ```
 
 ### Python dependencies
@@ -78,16 +78,22 @@ To upgrade to a CA-issued certificate:
 
 ### Generate a PDF
 
-1. Menu → Print → select a print format.
-2. Click the Generate PDF button in the toolbar.
-3. Configure copies, header/footer, QR, signature block, PAdES signing.
-4. Download PDF.
+1. Open any allowlisted doc and click the **Advanced Print** icon in the toolbar (right of Frappe's native Print icon).
+2. The Advanced Print page opens with a live preview.
+3. Configure copies, header/footer modes, QR overlay, signature block, watermark, PAdES signing.
+4. Click **Download PDF**.
 
 ### Verify a QR
 
 - Open the verify page on a phone or laptop with a camera.
 - Scan the QR on the printed/PDF document.
 - Page shows valid (green), tampered (red, hash mismatch), or invalid (UUID unknown).
+
+## Authoring print formats
+
+See **[PRINT_FORMAT_GUIDE.md](PRINT_FORMAT_GUIDE.md)** for the complete reference: body-header/footer extraction, utility classes (`.page-break`, `.no-split`, `.no-print`, etc.), Jinja helpers, and worked examples.
+
+Full developer and operator docs: **[DOCUMENTATION.md](DOCUMENTATION.md)**.
 
 ## License
 

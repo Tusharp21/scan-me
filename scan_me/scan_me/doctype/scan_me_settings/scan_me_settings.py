@@ -6,7 +6,31 @@ from frappe.model.document import Document
 
 
 class ScanMeSettings(Document):
-	pass
+	def validate(self):
+		# Frappe doesn't call a child row's controller validate() during the
+		# parent's save flow, so the per-row checks have to live here on the
+		# parent. We block two doctype kinds that would break signing later:
+		# Singles have no per-record name to attach a Verified QR to, and
+		# child tables can't be signed standalone (Verified QR has no
+		# parent-row coordinates). Letting either into the allowlist would
+		# trip a traceback inside generate_verified_qr at sign time; catching
+		# it at config save gives the admin a clear message instead.
+		for row in self.get("ref_doctype_info") or []:
+			if not row.ref_doctype:
+				continue
+			meta = frappe.get_meta(row.ref_doctype)
+			if getattr(meta, "issingle", 0):
+				frappe.throw(
+					frappe._(
+						"'{0}' is a Single doctype and can't be signed — pick a doctype with individual records."
+					).format(row.ref_doctype)
+				)
+			if getattr(meta, "istable", 0):
+				frappe.throw(
+					frappe._(
+						"'{0}' is a child table and can't be signed on its own — pick the parent doctype instead."
+					).format(row.ref_doctype)
+				)
 
 
 def _user_allowed_doctypes():
