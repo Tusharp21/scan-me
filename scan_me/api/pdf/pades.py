@@ -1,12 +1,7 @@
 # Copyright (c) 2025, Tushar Patel and contributors
 # For license information, please see license.txt
-"""PAdES digital signing wrapper around :mod:`scan_me.utils.pades`.
-
-Both the global toggle (``enable_pades_signing`` in Scan Me Settings) and the
-per-render flag (``apply_pades`` in the dialog) must be on for signing to
-happen. Failures are swallowed and the unsigned bytes returned, so a misbehaving
-signer never blocks document download.
-"""
+"""PAdES wrapper around scan_me.utils.pades. Both admin toggle and per-render flag
+must be on; failures swallow to unsigned bytes so signing never blocks downloads."""
 
 import frappe
 
@@ -14,14 +9,7 @@ from .signature import _fetch_signature_records
 
 
 def _maybe_pades_sign(pdf_bytes, opts, doctype, name):
-	"""Run the merged PDF through PyHanko if the user asked for PAdES signing.
-
-	Requires:
-	  - enable_pades_signing = 1 in Scan Me Settings (admin-gated)
-	  - apply_pades = 1 in the dialog (user-selected per-render)
-	Silently returns the unsigned bytes if either is off. Logs and returns
-	unsigned bytes on signing failure to avoid losing the document.
-	"""
+	"""PyHanko-sign when both apply_pades (dialog) and enable_pades_signing (admin) are on."""
 	if not opts.get("apply_pades"):
 		return pdf_bytes
 

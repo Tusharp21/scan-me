@@ -11,18 +11,11 @@ import frappe
 
 
 def get_base64_data_uri(file_url):
-	"""Resolve a Frappe file URL to a base64 data-URI.
-
-	File URLs that resolve outside the site's public/files, private/files, or
-	the bench ``sites/`` / ``assets/`` directories are rejected — protects
-	against path traversal through user-supplied image URLs.
-	"""
+	"""Resolve Frappe file URL to base64 data-URI; paths outside allowed roots rejected."""
 	if not file_url or file_url.startswith("data:"):
 		return file_url or ""
 
-	# NUL bytes in paths are a classic ``open()`` smuggling trick (the C-level
-	# truncation can make security checks on one string apply to a different
-	# file). Reject early rather than rely on the Python runtime to catch it.
+	# NUL byte smuggles past C-level open() checks — reject early.
 	if "\x00" in file_url:
 		return file_url
 
@@ -39,9 +32,8 @@ def get_base64_data_uri(file_url):
 		disk_path = bench_path / "sites" / file_url.lstrip("/")
 		if not disk_path.exists():
 			disk_path = bench_path / file_url.lstrip("/")
-	# Fallback matches — catch URLs that embed a ``/private/files/`` or
-	# ``/files/`` segment deeper in the path. Kept for compatibility with
-	# odd renderings; the containment check below is still the real gate.
+	# Fallbacks for URLs with /private/files/ or /files/ deeper in the path;
+	# the containment check below is still the real gate.
 	elif "/private/files/" in file_url:
 		disk_path = site_path / "private" / "files" / file_url.split("/private/files/", 1)[1]
 	elif "/files/" in file_url:
@@ -50,11 +42,8 @@ def get_base64_data_uri(file_url):
 	if not disk_path or not disk_path.exists():
 		return file_url
 
-	# Contain the resolved path within allowed roots to block ``../`` escapes
-	# AND symlinks that point outside the allowlist. Both the candidate and
-	# each root are ``resolve()``d so a site whose ``public/files`` is itself
-	# a symlink (e.g. mounted storage) still accepts its own files, while
-	# resources whose realpath lands outside every allowed root are rejected.
+	# resolve() both sides to block ../ escapes AND symlinks pointing outside
+	# the allowlist, while still accepting symlinked storage like mounted public/files.
 	real = disk_path.resolve()
 	allowed_roots = [
 		(site_path / "public" / "files").resolve(),

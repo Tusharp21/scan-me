@@ -1,12 +1,6 @@
 # Copyright (c) 2025, Tushar Patel and contributors
 # For license information, please see license.txt
-"""Multi-copy PDF assembly + per-page header/footer mode rendering.
-
-The 'fast paths' avoid extra renders when both modes are All/All or None/None.
-For other combinations we render once to learn the page count, then render each
-group of consecutive same-status pages with appropriate templates and merge the
-results — keeping the same margins across renders so page breaks don't shift.
-"""
+"""Multi-copy assembly + per-page header/footer mode rendering."""
 
 from io import BytesIO
 
@@ -16,7 +10,7 @@ from .letterhead import _build_footer_template, _build_header_template
 
 
 def _merge_pdfs(pdf_bytes_list):
-	"""Concatenate a list of PDF byte blobs into a single PDF."""
+	"""Concatenate PDF byte blobs into a single PDF."""
 	writer = PdfWriter()
 	for pdf_bytes in pdf_bytes_list:
 		reader = PdfReader(BytesIO(pdf_bytes))
@@ -27,13 +21,8 @@ def _merge_pdfs(pdf_bytes_list):
 	return out.getvalue()
 
 
-# ---------------------------------------------------------------------------
-# Header / footer repeat modes
-# ---------------------------------------------------------------------------
-
-
 def _pages_with_status(total, mode):
-	"""Return 1-indexed page numbers where header/footer should appear."""
+	"""1-indexed page numbers where header/footer should appear."""
 	if total <= 0:
 		return set()
 	if mode == "All pages":
@@ -48,7 +37,7 @@ def _pages_with_status(total, mode):
 
 
 def _group_pages_by_status(total, header_on, footer_on):
-	"""Yield (start, end, has_header, has_footer) for each run of consecutive same-status pages."""
+	"""Yield (start, end, has_header, has_footer) for each consecutive same-status run."""
 	current_status = None
 	run_start = None
 	run_end = None
@@ -70,13 +59,8 @@ def _group_pages_by_status(total, header_on, footer_on):
 
 
 def _render_copy_with_modes(page, label, header_content, footer_content, margins, header_mode, footer_mode):
-	"""Render one complete copy respecting header_mode / footer_mode.
-
-	Fast paths avoid extra renders when both modes are All/All or None/None.
-	Otherwise: render once to learn page count, then render each group of
-	consecutive same-status pages with appropriate templates and merge.
-	Margins stay constant across renders so page breaks don't shift.
-	"""
+	"""Render one copy honouring header_mode/footer_mode. Margins stay constant across
+	per-group renders so page breaks don't shift."""
 	full_header = _build_header_template(header_content, label)
 	full_footer = _build_footer_template(footer_content)
 	empty_tpl = "<div></div>"
@@ -101,7 +85,7 @@ def _render_copy_with_modes(page, label, header_content, footer_content, margins
 			margin=margins,
 		)
 
-	# Need page count — do one reference render with full H/F.
+	# Reference render with full H/F to learn page count.
 	reference = page.pdf(
 		format="A4",
 		display_header_footer=True,
@@ -116,7 +100,7 @@ def _render_copy_with_modes(page, label, header_content, footer_content, margins
 
 	groups = list(_group_pages_by_status(total, header_on, footer_on))
 
-	# If the reference already matches the desired layout, return it as-is.
+	# Reference already matches desired layout — return as-is.
 	if len(groups) == 1 and groups[0][2] and groups[0][3]:
 		return reference
 

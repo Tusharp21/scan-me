@@ -1,10 +1,8 @@
 # Copyright (c) 2025, Tushar Patel and contributors
 # For license information, please see license.txt
-"""Public ``@frappe.whitelist`` entry point that orchestrates the entire
-Chrome-PDF pipeline. All feature work lives in the sibling modules — this file
-only wires them together and handles permission/validation gates.
-"""
+"""Whitelisted Chrome-PDF orchestrator; feature work lives in sibling modules."""
 
+import os
 import re
 
 import frappe
@@ -28,40 +26,28 @@ from .signature import _apply_signature_stamp_to_pages, _fetch_signature_records
 from .watermark import _inject_watermark
 
 
+def _ensure_browsers_path():
+	"""Set PLAYWRIGHT_BROWSERS_PATH lazily (keeps __init__ free of side effects)."""
+	bench_browsers = os.path.abspath(
+		os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "playwright-browsers")
+	)
+	os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", bench_browsers)
+
+
 @frappe.whitelist(allow_guest=False)
 def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, options=None, preview_mode=0):
-	"""Generate a PDF using headless Chromium (Playwright).
-
-	- Header/footer come directly from Letter Head doctype (manage in UI)
-	- Page numbers are auto-appended to the footer
-	- All images auto-embedded as base64
-	- PDF streamed to browser — nothing saved to disk
-
-	``options`` is a JSON string from the print-preview dialog. Implemented:
-	multi-copy, QR injection, header/footer repeat modes, 'Signature valid'
-	stamp pulled from Verified QR, and optional PAdES digital signature via
-	PyHanko (apply_pades; gated by enable_pades_signing in Scan Me Settings).
-	"""
+	"""Generate a PDF via headless Chromium (Playwright); orchestrates feature modules."""
 	if not frappe.has_permission(doctype, "print", name):
 		frappe.throw(frappe._("No permission to print this document."), frappe.PermissionError)
 
-	# Gate on the Scan Me Settings allowlist. Without this, any user with
-	# print permission on any doctype could route through this endpoint and
-	# get QR injection, watermark, and signature stamps applied — even for
-	# doctypes the admin never approved for Scan Me.
+	# Gate on Scan Me allowlist so unapproved doctypes can't get QR/watermark/stamps.
 	from scan_me.utils.verification import assert_allowed_doctype
 
 	assert_allowed_doctype(doctype)
 
-	# Reject a Print Format that was built for a different doctype. Without
-	# this, a caller with print permission on doctype A could invoke a format
-	# whose Jinja template targets doctype B — the template would then try to
-	# resolve B's fields against A's doc, producing unpredictable output and
-	# potentially leaking fragments the admin never intended to render here.
-	# Empty / None means "use the doctype's default format", and the literal
-	# ``Standard`` is Frappe's built-in pseudo-format (not a DB row) that
-	# renders every doctype with the stock template — both are always safe,
-	# so we only validate when a real, named Print Format is supplied.
+	# Reject cross-doctype Print Formats: a format targeting doctype B
+	# resolving against A's doc could leak unintended fragments.
+	# Empty/None and "Standard" are always safe (built-in pseudo-format).
 	print_format = (print_format or "").strip() or None
 	if print_format and print_format != "Standard":
 		pf_doctype = frappe.db.get_value("Print Format", print_format, "doc_type")
@@ -105,10 +91,8 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 	body_html = re.sub(r'<div class="action-banner.*?">.*?</div>', "", body_html, flags=re.DOTALL)
 	body_html = embed_images(body_html)
 
-	# Body-defined header/footer (id="header-html" / id="footer-html") override
-	# the letter-head templates. They're commonly kept in the body so HTML print
-	# preview can show them; for the actual PDF they belong in the repeating
-	# page header/footer.
+	# Body-defined id="header-html"/"footer-html" override Letter Head templates;
+	# they live in body for HTML preview but become repeating PDF header/footer.
 	body_header_html, body_footer_html, body_html = extract_body_header_footer(body_html)
 	if body_header_html is not None:
 		header_content = body_header_html
@@ -117,7 +101,7 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 		footer_content = body_footer_html
 		footer_h = footer_h or 10
 
-	# If there's no header but we still need a copy badge, reserve space.
+	# Reserve space for copy badge when header is otherwise empty.
 	effective_header_h = header_h or (15 if copy_count > 1 else 0)
 
 	if "</head>" in body_html:
@@ -128,10 +112,10 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 	body_html = _inject_watermark(body_html, opts, doctype, name)
 	body_html = _inject_qr_if_needed(body_html, opts, doctype, name)
 
-	# Signature records drive the per-page 'Signature valid' stamp applied
-	# after rendering. The stamp always shows the most recent signer — it's a
-	# fixed-size overlay marker, not a multi-signer list.
+	# Per-page 'Signature valid' stamp shows most recent signer only.
 	sig_records = _fetch_signature_records(doctype, name) if opts.get("append_signature") else None
+
+	_ensure_browsers_path()
 
 	browser = None
 	pdf_copies = []
@@ -140,10 +124,8 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 			browser = pw.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"])
 			page = browser.new_page()
 
-			# Measure actual rendered height of header/footer templates so the
-			# page margin matches their real size. Chrome won't auto-size its
-			# header/footer area — content taller than the reserved margin
-			# gets clipped.
+			# Measure rendered header/footer height — Chrome won't auto-size,
+			# content exceeding the reserved margin gets clipped.
 			measure_page = browser.new_page()
 			try:
 				sample_header = _build_header_template(header_content, copy_labels[0])
@@ -183,8 +165,7 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 
 			final_pdf = pdf_copies[0] if len(pdf_copies) == 1 else _merge_pdfs(pdf_copies)
 
-			# Per-page 'Signature valid' stamp. Must run while the browser is
-			# still alive since the overlay is rendered via Playwright.
+			# Stamp overlay must run while browser is alive (rendered via Playwright).
 			if sig_records:
 				final_pdf = _apply_signature_stamp_to_pages(final_pdf, sig_records, browser)
 	except Exception:
@@ -197,17 +178,14 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 			except Exception:
 				pass
 
-	# Skip expensive crypto signing on live-preview requests — Adobe's signature
-	# panel isn't visible in the preview iframe anyway, and skipping saves ~300-500ms.
+	# Skip crypto signing on live-preview: invisible in iframe, saves 300-500ms.
 	is_preview = bool(frappe.utils.cint(preview_mode))
 	if not is_preview:
 		final_pdf = _maybe_pades_sign(final_pdf, opts, doctype, name)
 
 	safe_name = re.sub(r"[^\w\-.]", "-", name)
 
-	# Attach the fully-rendered PDF to the source document when requested.
-	# Only on download (preview_mode off) — preview runs on every keystroke
-	# and attaching each time would litter the document with files.
+	# Only on download — preview runs every keystroke and would litter attachments.
 	if not is_preview and opts.get("attach_to_doc"):
 		_attach_pdf_to_doc(final_pdf, safe_name, doctype, name)
 	frappe.local.response.filename = f"{safe_name}.pdf"

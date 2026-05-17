@@ -1,12 +1,6 @@
 # Copyright (c) 2025, Tushar Patel and contributors
 # For license information, please see license.txt
-"""Build per-page 'Signature valid' / 'Signature invalid' stamps from
-Verified QR records and overlay them onto every page of the merged PDF.
-
-The stamp shows the most recent signer only — it's a fixed-size visual marker,
-not a multi-signer list. Tamper status is computed by re-hashing the document
-and comparing against the stored hash.
-"""
+"""Per-page 'Signature valid/invalid' stamp from Verified QR; most recent signer only."""
 
 from io import BytesIO
 
@@ -15,11 +9,7 @@ from pypdf import PdfReader, PdfWriter
 
 
 def _fetch_signature_records(doctype, name):
-	"""Return a list of signature-info dicts, one per Verified QR for this doc.
-
-	Signature records are ordered by signed_on / creation. Each dict includes
-	``tamper_status`` computed against the current doc content hash.
-	"""
+	"""Verified QR rows ordered by signed_on, each with tamper_status vs current content."""
 	rows = frappe.db.get_all(
 		"Verified QR",
 		filters={"ref_doctype": doctype, "ref_docname": name},
@@ -67,18 +57,16 @@ def _fetch_signature_records(doctype, name):
 				info["signed_on"] = str(ts)
 
 		if r.content_hash and current_hash and verify_stored_hash:
-			# verify_stored_hash transparently handles both the v1:HMAC
-			# format (for records signed after the hash-wrapping rollout)
-			# and legacy plain-sha256 records (pre-v1).
+			# verify_stored_hash handles both v1:HMAC and legacy plain-sha256.
 			matches = verify_stored_hash(
 				r.content_hash, doctype, name, r.signed_by, current_plain=current_hash
 			)
 			info["tamper_status"] = "verified" if matches else "tampered"
 			info["current_hash"] = current_hash
 		elif r.content_hash:
-			info["tamper_status"] = "unknown"  # couldn't compute current hash
+			info["tamper_status"] = "unknown"
 		else:
-			info["tamper_status"] = "unhashed"  # no hash recorded (older/toggled off)
+			info["tamper_status"] = "unhashed"
 
 		results.append(info)
 
@@ -86,13 +74,7 @@ def _fetch_signature_records(doctype, name):
 
 
 def _build_page_stamp_overlay_html(record):
-	"""A4 transparent page with a PlotSoft-style 'Signature valid' stamp at bottom-right.
-
-	Rendered once with Playwright and then merged onto every page of the main
-	PDF via :func:`_apply_signature_stamp_to_pages`. Green border + checkmark
-	when the content hash matches; red border + cross when the document has
-	been modified since signing.
-	"""
+	"""A4 transparent overlay with 'Signature valid/invalid' stamp at bottom-right."""
 	esc = frappe.utils.escape_html
 	status = record.get("tamper_status") or "unhashed"
 	tampered = status == "tampered"
@@ -179,12 +161,7 @@ def _build_page_stamp_overlay_html(record):
 
 
 def _apply_signature_stamp_to_pages(pdf_bytes, records, browser):
-	"""Overlay the 'Signature valid' stamp on every page of the input PDF.
-
-	Uses the most recent signer only — the stamp is a fixed-size visual marker,
-	so multi-signer rendering isn't supported here. On any failure we log and
-	return the original bytes so the user still gets a usable PDF.
-	"""
+	"""Overlay stamp on every page; failures return original bytes so download still works."""
 	if not records:
 		return pdf_bytes
 

@@ -2,13 +2,8 @@ import frappe
 
 
 def execute():
-	"""Backfill Scan Me Settings → signature_type = 'Visual Block' on existing installs.
-
-	New Select fields added to an existing Single record don't pick up the JSON
-	default automatically — the column lands empty and needs an explicit write.
-	Existing installs with ``enable_pades_signing`` already on get "Both" so the
-	print page's single "Apply Signature" checkbox keeps producing PAdES output.
-	"""
+	"""Backfill signature_type (JSON default doesn't apply to existing Single records).
+	Installs with enable_pades_signing on get 'Both' to preserve PAdES output."""
 	if not frappe.db.exists("DocType", "Scan Me Settings"):
 		return
 

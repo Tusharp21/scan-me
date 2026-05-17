@@ -14,21 +14,13 @@ from PIL import Image
 
 from scan_me.utils.verification import build_qr_payload
 
-# ---------------------------------------------------------------------------
-# Input bounds
-# ---------------------------------------------------------------------------
-# All of the functions below are ``@frappe.whitelist(allow_guest=False)`` so any authenticated
-# user can call them over HTTP. Unbounded numeric params let a caller request
-# a huge PNG (``clearity=100000``) and exhaust server memory; unbounded
-# ``size`` strings let them break out of the ``style="..."`` attribute we
-# emit on <img> tags. These caps are generous for legitimate template use
-# but tight enough to make abuse uninteresting.
+# Bounds for whitelisted callers — unbounded numerics enable huge-PNG memory abuse,
+# unbounded size strings let callers break out of <img style="..."> attrs.
 MIN_BOX_SIZE = 1
 MAX_BOX_SIZE = 20
 MIN_BORDER = 0
 MAX_BORDER = 10
-# QR v40 alphanumeric capacity is 4296 chars; 2953 bytes is the byte-mode
-# ceiling. We cap slightly below to keep error-correction headroom.
+# QR v40 byte-mode ceiling (2953); slightly under to keep ECC headroom.
 MAX_QR_DATA_BYTES = 2953
 MIN_MODULE_WIDTH = 0.1
 MAX_MODULE_WIDTH = 5.0
@@ -39,10 +31,7 @@ MAX_QUIET_ZONE = 20.0
 MIN_FONT_SIZE = 0
 MAX_FONT_SIZE = 48
 
-# Deliberately narrow: digits (up to 4), optional fractional part, then one
-# of a closed set of units. Any character outside this set in the ``size``
-# argument could be smuggled through the <img style="..."> attribute to
-# enable CSS-based layout abuse or exfiltration via background:url().
+# Narrow regex: anything outside this set could smuggle CSS into <img style>.
 CSS_SIZE_RE = re.compile(r"^\d{1,4}(\.\d+)?(mm|cm|px|pt|in|em|rem|%)$")
 
 
@@ -84,11 +73,6 @@ def _check_qr_data(data, *, name: str = "data") -> str:
 	return s
 
 
-# ---------------------------------------------------------------------------
-# QR and barcode generators
-# ---------------------------------------------------------------------------
-
-
 @frappe.whitelist(allow_guest=False)
 def qr(
 	data,
@@ -98,14 +82,7 @@ def qr(
 	back_color: str = "white",
 	include_logo: bool = False,
 ) -> str:
-	"""Render a QR code PNG as a ``data:image/png;base64,...`` URI.
-
-	``clearity`` is ``qrcode``'s ``box_size`` (pixels per module). ``border``
-	is the quiet-zone width in modules. Colors accept any Pillow color name
-	or hex string. ``include_logo`` overlays the site's ``Website Settings``
-	app logo in the QR centre — logo fetch failures are logged and the plain
-	QR is returned, so a broken logo never breaks print rendering.
-	"""
+	"""Render a QR PNG as data:image/png;base64. Logo fetch failures fall back to plain QR."""
 	payload = _check_qr_data(data)
 	box_size = _clamp_int(clearity, lo=MIN_BOX_SIZE, hi=MAX_BOX_SIZE, name="clearity")
 	border_px = _clamp_int(border, lo=MIN_BORDER, hi=MAX_BORDER, name="border")
@@ -143,14 +120,7 @@ def barcode(
 	font_size: int = 10,
 	quiet_zone: float = 2,
 ) -> str:
-	"""Render a barcode PNG as a ``data:image/png;base64,...`` URI.
-
-	Returns an empty string for an unknown ``barcode_type`` or a value that
-	the chosen type rejects (e.g. letters in an EAN-13), so templates can
-	fall back gracefully. Numeric bounds are validated up front — a huge
-	``module_height`` would otherwise let a caller request a multi-gigabyte
-	PNG.
-	"""
+	"""Render a barcode PNG as a data URI; returns "" on bad type/value so templates degrade."""
 	if not data or not str(data).strip():
 		return ""
 
@@ -202,10 +172,7 @@ def qr_link(
 	)
 
 
-# ---------------------------------------------------------------------------
-# Marker-emitting variants — use these in print formats so the Chrome PDF
-# pipeline can detect an existing QR and avoid double-insertion.
-# ---------------------------------------------------------------------------
+# Marker-emitting variants: scan-me-qr class lets the PDF pipeline skip double-insertion.
 
 
 @frappe.whitelist(allow_guest=False)
@@ -218,13 +185,7 @@ def qr_img(
 	include_logo: bool = False,
 	size: str = "30mm",
 ) -> str:
-	"""``<img class="scan-me-qr">`` wrapping :func:`qr`.
-
-	``size`` is validated against a strict unit regex because the value is
-	interpolated into the emitted ``style="..."`` attribute — without
-	validation a caller could smuggle extra CSS declarations (or close the
-	attribute and inject markup) through this argument.
-	"""
+	"""<img class="scan-me-qr"> wrapping qr(); size is regex-validated to block CSS injection."""
 	safe_size = _sanitize_css_size(size)
 	src = qr(
 		data,
@@ -260,10 +221,7 @@ def qr_link_img(
 	return f'<img class="scan-me-qr" src="{src}" style="width:{safe_size}; height:{safe_size};">'
 
 
-# ---------------------------------------------------------------------------
-# Verification-aware helpers — encode the Verified QR payload (uuid|hash|sig)
-# so third parties can validate integrity via /verify_document.
-# ---------------------------------------------------------------------------
+# Verification-aware helpers — encode uuid|hash|sig payload for /verify_document.
 
 
 @frappe.whitelist(allow_guest=False)
@@ -275,11 +233,7 @@ def verify_qr(
 	fill_color: str = "black",
 	back_color: str = "white",
 ) -> str:
-	"""Return a QR data-URI encoding the Verified QR payload for this document.
-
-	- If a Verified QR exists, payload is the signed ``uuid|hash|sig`` triple.
-	- If no Verified QR exists, returns an empty string (caller should not render).
-	"""
+	"""QR data-URI for the doc's Verified QR payload; "" when no Verified QR exists."""
 	record = frappe.db.get_value(
 		"Verified QR",
 		{"ref_doctype": doctype, "ref_docname": name},

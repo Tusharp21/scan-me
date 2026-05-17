@@ -1,29 +1,17 @@
 # Copyright (c) 2025, Tushar Patel and contributors
 # For license information, please see license.txt
-"""Inject a fixed-position watermark that repeats on every PDF page.
-
-The client may pass either a literal string (e.g. ``CONFIDENTIAL``) or the
-sentinel :data:`WATERMARK_STATUS_TOKEN` to derive the label from the doc's
-``status`` field (or its docstatus for unsubmitted/cancelled docs).
-"""
+"""Fixed-position repeating page watermark. Accepts literal text or __status__ sentinel."""
 
 import re
 
 import frappe
 
-# Sentinel passed by the client when the user picked the "Document Status" watermark
-# mode — the server resolves the actual label from the doc at render time.
+# Sentinel for "Document Status" mode — resolved per-request from the doc.
 WATERMARK_STATUS_TOKEN = "__status__"
 
 
 def _docstatus_label(docstatus: int) -> str:
-	"""Watermark label for a submittable doc with no ``status`` field.
-
-	Intentionally a function (not a module-level dict) so ``frappe._`` runs
-	per-request against the caller's locale — caching the translated string
-	at import time would pin every render to whatever language happened to
-	be active the first time this module was loaded.
-	"""
+	"""Function (not module dict) so frappe._ runs per-request against caller locale."""
 	if docstatus == 0:
 		return frappe._("Draft").upper()
 	if docstatus == 2:
@@ -32,12 +20,7 @@ def _docstatus_label(docstatus: int) -> str:
 
 
 def _resolve_watermark_text(raw, doctype, name):
-	"""Turn the client-supplied ``watermark_text`` into a final label.
-
-	``__status__`` is a sentinel meaning "use the document's status". We prefer
-	an explicit ``status`` field if present (ERPNext sets this on submittable
-	docs), otherwise fall back to a Draft/Cancelled label from docstatus.
-	"""
+	"""Resolve final label; __status__ → doc.status, falling back to docstatus label."""
 	raw = (raw or "").strip()
 	if not raw:
 		return ""
@@ -60,7 +43,7 @@ def _inject_watermark(body_html, opts, doctype, name):
 		return body_html
 
 	safe = frappe.utils.escape_html(text)
-	# Font size scales down for long strings so very long statuses still fit.
+	# Scale down for long strings so wide statuses still fit on the page.
 	font_size = 140 if len(text) <= 10 else max(60, int(1400 / len(text)))
 	block = (
 		'<div class="sm-watermark" style="'

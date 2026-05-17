@@ -17,34 +17,6 @@ A Frappe app that turns any allowlisted document into a verifiable, signable PDF
 - Jinja helpers: `qr`, `barcode`, `qr_link`, `qr_img`, `qr_link_img`, `verify_qr`, `verify_qr_img`.
 - Bundled Sales Invoice Scan Me print format.
 
-## Installation
-
-```bash
-bench get-app scan_me
-bench install-app scan_me
-```
-
-Playwright's `chromium-headless-shell` (~110 MB) is downloaded automatically by the `after_install` hook into `{bench_path}/playwright-browsers/` so PDF generation works immediately. The cache is bench-local (not user-global) so it survives Playwright pip upgrades and one cache serves the whole bench. `bench migrate` re-validates the cache; stale or partial downloads trigger a fresh install.
-
-### Fallback — manual Chromium install
-
-If the auto-download fails, run this once on the server from your bench directory:
-
-```bash
-PLAYWRIGHT_BROWSERS_PATH=$(pwd)/playwright-browsers ./env/bin/python -m playwright install chromium-headless-shell
-```
-
-### Python dependencies
-
-- qrcode
-- python-barcode
-- playwright
-- pypdf
-- pyHanko
-- cryptography
-
-All install automatically via `bench install-app`.
-
 ## Configuration
 
 Open Scan Me Settings in the desk:

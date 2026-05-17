@@ -2,12 +2,8 @@ import frappe
 
 
 def execute():
-	"""Turn on all dialog feature toggles for existing installs.
-
-	New Check fields added to Scan Me Settings get ALTER TABLE default 0.
-	The JSON ``"default": "1"`` only applies to new inserts, so existing
-	Single records keep 0 unless we backfill.
-	"""
+	"""Backfill dialog toggles to on; new Check fields get ALTER TABLE default 0,
+	JSON default only applies to new inserts so existing Single records need this."""
 	if not frappe.db.exists("DocType", "Scan Me Settings"):
 		return
 

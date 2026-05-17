@@ -6,13 +6,7 @@ import frappe
 
 
 def _attach_pdf_to_doc(pdf_bytes, safe_name, doctype, name):
-	"""Save the rendered PDF as a File record attached to the source document.
-
-	Uses Frappe's ``save_file`` helper which correctly handles content
-	persistence (writes to disk, hashes, etc.). Permission check is explicit so
-	we can log the refusal. Failures are logged, not raised — the user still
-	gets their download.
-	"""
+	"""Save PDF as a private File on the source doc. Failures logged, never raised."""
 	if not frappe.has_permission(doctype, "write", name):
 		frappe.log_error(
 			"Scan Me: attach PDF denied",
@@ -30,6 +24,6 @@ def _attach_pdf_to_doc(pdf_bytes, safe_name, doctype, name):
 			dn=name,
 			is_private=1,
 		)
-		frappe.db.commit()  # ensure the File row persists even with response streaming
+		frappe.db.commit()  # persist File row despite response streaming
 	except Exception:
 		frappe.log_error("Scan Me: attach PDF failed", frappe.get_traceback())

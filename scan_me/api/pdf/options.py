@@ -6,23 +6,7 @@ import json
 
 MAX_COPIES = 5
 
-# ---------------------------------------------------------------------------
-# Options schema passed by the Advanced Print page (scan_me/scan_me/page/scan_me_print/scan_me_print.js)
-# ---------------------------------------------------------------------------
-# copy_count         int    1/2/3
-# copy_labels        str    comma-separated, e.g. "ORIGINAL, DUPLICATE"
-# header_mode        str    "All pages" | "First page only" | "Last page only"
-#                           | "First and last pages" | "None"
-# footer_mode        str    same options as header_mode
-# include_qr         0/1
-# qr_position        str    "Top Right" | "Top Left" | "Bottom Right" | "Bottom Left"
-# qr_source          str    "Verified QR Link" | "Document URL" | "Custom Text"
-# qr_custom_text     str
-# qr_force_insert    0/1    skip marker detection and always inject
-# append_signature   0/1
-# watermark_text     str    literal text, or "__status__" to derive from doc
-# ---------------------------------------------------------------------------
-
+# Options schema sent by scan_me_print.js (see DEFAULT_OPTIONS for keys/types).
 DEFAULT_OPTIONS = {
 	"copy_count": 1,
 	"copy_labels": "",
@@ -60,11 +44,7 @@ def _parse_options(raw):
 
 
 def _parse_copy_labels(raw, count):
-	"""Split comma-separated labels and pad with auto-generated names if short.
-
-	If ``raw`` is empty/whitespace, no stamps are applied — N plain copies are
-	rendered without any badge. Labels are therefore optional on multi-copy PDFs.
-	"""
+	"""Split labels and pad with auto names; empty raw → N copies with no badge."""
 	if count <= 1:
 		return [""]
 	raw = (raw or "").strip()

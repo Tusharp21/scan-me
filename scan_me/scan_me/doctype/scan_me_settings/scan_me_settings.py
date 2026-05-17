@@ -7,14 +7,7 @@ from frappe.model.document import Document
 
 class ScanMeSettings(Document):
 	def validate(self):
-		# Frappe doesn't call a child row's controller validate() during the
-		# parent's save flow, so the per-row checks have to live here on the
-		# parent. We block two doctype kinds that would break signing later:
-		# Singles have no per-record name to attach a Verified QR to, and
-		# child tables can't be signed standalone (Verified QR has no
-		# parent-row coordinates). Letting either into the allowlist would
-		# trip a traceback inside generate_verified_qr at sign time; catching
-		# it at config save gives the admin a clear message instead.
+		# Per-row checks here: Frappe doesn't call child validate() on parent save.
 		for row in self.get("ref_doctype_info") or []:
 			if not row.ref_doctype:
 				continue
@@ -34,14 +27,7 @@ class ScanMeSettings(Document):
 
 
 def _user_allowed_doctypes():
-	"""Return the admin-configured allowlist filtered to what the caller can sign.
-
-	The raw allowlist in Scan Me Settings is admin-only data — exposing it in
-	full to every authenticated user lets a low-role account enumerate which
-	doctypes are privileged targets. We filter to doctypes where the caller
-	has role-level ``write`` permission (signing is a write action), so a user
-	who couldn't generate a QR on a given doctype never sees it listed.
-	"""
+	"""Allowlist filtered by caller's write perm — prevents low-role enumeration of privileged targets."""
 	settings = frappe.get_single("Scan Me Settings")
 	return [
 		d.ref_doctype
@@ -58,15 +44,9 @@ def get_allowed_doctypes():
 
 @frappe.whitelist(allow_guest=False)
 def get_form_integration():
-	"""Single payload for the form-level JS (allowlist + button visibility flag).
-
-	Called from public/js/hardcopy_button.js on desk load. Combining into one
-	call avoids two round trips per form refresh. ``allowed_doctypes`` is
-	filtered by the caller's write permission so the Advanced Print button
-	doesn't get registered on forms they couldn't sign anyway.
-	"""
+	"""Form-JS payload: allowlist + button visibility; one call avoids 2 round trips per refresh."""
 	settings = frappe.get_single("Scan Me Settings")
-	# Default to on for older installs missing the field.
+	# Default on for older installs missing the field.
 	show = settings.get("enable_advanced_print_button") in (None, 1, "1", True)
 	return {
 		"allowed_doctypes": _user_allowed_doctypes(),
@@ -76,15 +56,7 @@ def get_form_integration():
 
 @frappe.whitelist(allow_guest=False)
 def get_print_defaults(doctype):
-	"""Return the sensible default Print Format and Letter Head for a doctype.
-
-	Default print format is stored on the DocType record itself
-	(``DocType.default_print_format``), not as a flag on Print Format rows.
-	Default letter head comes from the Letter Head with ``is_default=1``.
-	Requires role-level print permission on ``doctype`` so this endpoint
-	can't be used by a low-role user as an oracle for per-doctype print
-	configuration.
-	"""
+	"""Default Print Format + Letter Head for a doctype; gated by print perm to block enumeration."""
 	if not frappe.db.exists("DocType", doctype):
 		frappe.throw(
 			frappe._("DocType {0} does not exist.").format(doctype),
@@ -109,16 +81,9 @@ def get_print_defaults(doctype):
 
 @frappe.whitelist(allow_guest=False)
 def get_dialog_settings():
-	"""Flags that control which sections render in the Chrome PDF print dialog.
-
-	Authenticated-only (whitelist without ``allow_guest``). The returned flags
-	are pure UI toggles — no doctype-level data, no admin secrets — so
-	per-caller filtering would be pointless. If a future field here starts
-	returning higher-sensitivity data, gate it explicitly rather than adding
-	it to this payload.
-	"""
+	"""UI toggle flags for the print dialog. Pure UI flags — no per-caller filtering needed."""
 	s = frappe.get_single("Scan Me Settings")
-	# Default to on for any flag missing from older installs.
+	# Default on for any flag missing from older installs.
 	return {
 		"show_copies": 1 if s.get("show_copies_section") in (None, 1, "1", True) else 0,
 		"show_header_footer": 1 if s.get("show_header_footer_section") in (None, 1, "1", True) else 0,

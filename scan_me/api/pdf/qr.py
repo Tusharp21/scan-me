@@ -1,11 +1,7 @@
 # Copyright (c) 2025, Tushar Patel and contributors
 # For license information, please see license.txt
-"""Inject a QR image into the print body per ``options``.
-
-The marker class ``scan-me-qr`` is used to detect a pre-existing QR in the
-template (so we don't double-stamp). Setting ``qr_force_insert`` bypasses the
-detection and injects unconditionally.
-"""
+"""Inject QR into the print body. class="scan-me-qr" marker prevents double-stamping;
+qr_force_insert bypasses the check and always injects."""
 
 import re
 
@@ -15,7 +11,7 @@ QR_MARKER = 'class="scan-me-qr"'
 
 
 def _resolve_qr_data(opts, doctype, name):
-	"""Work out what string goes into the QR based on qr_source."""
+	"""Pick QR string based on qr_source (Verified QR Link / Custom Text / Document URL)."""
 	source = opts.get("qr_source") or "Document URL"
 	if source == "Custom Text":
 		text = (opts.get("qr_custom_text") or "").strip()
@@ -38,11 +34,7 @@ def _resolve_qr_data(opts, doctype, name):
 
 
 def _build_qr_block(qr_data_uri, position):
-	"""Wrap a QR data-URI in a floated div for injection into the body flow.
-
-	Top positions inject at the start of <body>, bottom positions at the end.
-	Float direction follows the Left/Right suffix.
-	"""
+	"""Wrap QR in a floated div; float side from Left/Right suffix."""
 	float_side = "right" if position.endswith("Right") else "left"
 	margin = "margin:0 0 4mm 4mm;" if float_side == "right" else "margin:0 4mm 4mm 0;"
 	return (
@@ -54,7 +46,7 @@ def _build_qr_block(qr_data_uri, position):
 
 
 def _inject_qr_if_needed(body_html, opts, doctype, name):
-	"""Inject a QR image into the body per options; skip if one is already present."""
+	"""Inject QR into body; skip if scan-me-qr marker already present (unless force-insert)."""
 	if not opts.get("include_qr"):
 		return body_html
 	if not opts.get("qr_force_insert") and QR_MARKER in body_html:

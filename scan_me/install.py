@@ -1,17 +1,7 @@
 # Copyright (c) 2025, Tushar Patel and contributors
 # For license information, please see license.txt
-"""Install hooks for Scan Me.
-
-Primary job: make sure Playwright's Chromium is downloaded post-install so
-PDF generation works out of the box. Failure is non-fatal — the admin sees
-a clear message with the manual command.
-
-The Chromium cache lives at ``{bench_path}/playwright-browsers/`` instead
-of the user-global ``~/.cache/ms-playwright/`` so it survives Playwright
-pip upgrades cleanly and one bench worth of apps shares one cache. The
-matching ``PLAYWRIGHT_BROWSERS_PATH`` export happens in ``scan_me/__init__.py``
-so every web/worker process picks it up at import time.
-"""
+"""Auto-install Playwright Chromium to {bench}/playwright-browsers/ so PDF
+generation works out of the box; failure is non-fatal."""
 
 import os
 import shutil
@@ -21,17 +11,11 @@ from pathlib import Path
 
 import frappe
 
-# Playwright drops this marker file inside a browser dir ONLY after a
-# successful install. Treating "dir exists" as cached is what bit us when
-# a Playwright pip upgrade left a stale dir behind — launch then failed
-# with "Executable doesn't exist". Marker presence is the reliable signal.
+# Playwright drops this only after a successful install; a bare chromium-*
+# dir without it means a stale or partial download — must re-fetch.
 _PLAYWRIGHT_MARKER = "INSTALLATION_COMPLETE"
 
-# Caps on the Playwright install output captured into the Error Log on
-# failure. Playwright's stderr/stdout can embed proxy URLs (with creds),
-# $PATH fragments, and other environment specifics — logging the raw
-# output unbounded would be a liability. 2000 chars each is enough to see
-# the top traceback and the initial error context for diagnosis.
+# Playwright stderr can embed proxy creds / $PATH; bound the Error Log dump.
 _INSTALL_LOG_TAIL = 2000
 
 
@@ -41,9 +25,6 @@ def _browsers_path() -> Path:
 
 
 def _truncate_output(label: str, text: str) -> str:
-	"""Clip subprocess stderr/stdout so a long Playwright dump doesn't flood
-	the Error Log (and doesn't include more env info than a reader needs to
-	diagnose the failure)."""
 	if not text:
 		return f"{label}:\n(empty)"
 	text = text.strip()
@@ -53,28 +34,18 @@ def _truncate_output(label: str, text: str) -> str:
 
 
 def after_install():
-	"""Runs once after `bench install-app scan_me` finishes."""
 	ensure_chromium()
 
 
 def after_migrate():
-	"""Runs after every `bench migrate`. Re-validates the cache so a
-	Playwright pip upgrade that invalidated the previous binary triggers a
-	fresh download automatically — the original install-only hook missed
-	this case and shipped a broken PDF pipeline until manually fixed."""
+	# Re-runs marker validation so a Playwright pip upgrade that invalidated
+	# the previous binary triggers a fresh download automatically.
 	ensure_chromium()
 
 
 def ensure_chromium(force=False):
-	"""Download Playwright's Chromium browser if not already present.
-
-	Safe to call repeatedly — verifies the cache via Playwright's
-	``INSTALLATION_COMPLETE`` marker (not just dir existence), so stale or
-	partial downloads from a previous Playwright version trigger a refresh
-	instead of getting silently reused. Pass ``force=True`` to wipe the
-	cache and re-download. Non-fatal on failure — logs an Error Log entry
-	and shows the admin a message with the manual fallback command.
-	"""
+	"""Download Chromium if the cache is missing or invalid; ``force=True``
+	wipes and re-downloads. Non-fatal on failure."""
 	try:
 		import playwright  # presence check only — module is referenced via subprocess
 	except ImportError:
@@ -98,14 +69,14 @@ def ensure_chromium(force=False):
 
 	browsers_dir.mkdir(parents=True, exist_ok=True)
 
-	# Headless-shell is Playwright's PDF-focused build — ~110MB vs full
-	# Chromium's ~170MB. Same rendering engine, no UI surface; perfect for
-	# server-side PDF generation.
+	# chromium-headless-shell is the PDF-focused build (~110MB vs ~170MB full).
 	env = os.environ.copy()
 	env["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_dir)
 	env["NODE_OPTIONS"] = f"{env.get('NODE_OPTIONS', '')} --no-deprecation".strip()
 
 	try:
+		# nosemgrep: frappe-subprocess-exec — args are a fixed literal list, no
+		# user input; env is os.environ.copy() plus two known keys.
 		result = subprocess.run(
 			[sys.executable, "-m", "playwright", "install", "chromium-headless-shell"],
 			capture_output=True,
@@ -141,7 +112,7 @@ def ensure_chromium(force=False):
 		_cleanup_partial(browsers_dir)
 		frappe.log_error("Scan Me: chromium install error", frappe.get_traceback())
 
-	# If we got here, the auto-install failed — leave a message for the admin.
+	# Auto-install failed — surface the manual command if we're in a request.
 	try:
 		frappe.msgprint(
 			msg=frappe._(
@@ -153,18 +124,12 @@ def ensure_chromium(force=False):
 			indicator="orange",
 		)
 	except Exception:
-		# msgprint only works in a request context; fall through silently otherwise.
+		# msgprint only fires in a request context; non-request callers fall through.
 		pass
 
 
 def _chromium_cache_valid(base: Path) -> bool:
-	"""True only if a Chromium build dir contains Playwright's success marker.
-
-	A folder named ``chromium*`` alone isn't enough — partial or
-	post-upgrade aborted downloads leave the dir behind with no marker,
-	and treating that as "cached" is what causes ``BrowserType.launch``
-	to fail at runtime with "Executable doesn't exist".
-	"""
+	"""True only if a chromium* dir contains the INSTALLATION_COMPLETE marker."""
 	if not base.exists():
 		return False
 	for child in base.iterdir():
