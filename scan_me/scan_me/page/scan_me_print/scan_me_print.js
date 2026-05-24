@@ -160,6 +160,11 @@ class ScanMeAdvancedPrint {
                     <div class="sm-ap-section" data-section="signature">
                         <div class="sm-ap-section-title">${__("Signature")}</div>
                         <div data-ap-field="apply_signature"></div>
+                        <div class="sm-ap-pades-hint" hidden>
+                            🔒 ${__(
+								"Final PDF will be cryptographically signed (PAdES). Adobe Reader will show the signature panel — no visual stamp is drawn on the page."
+							)}
+                        </div>
                     </div>
                 </aside>
                 <section class="sm-ap-main">
@@ -359,6 +364,7 @@ class ScanMeAdvancedPrint {
 			f.df.change = () => this.on_field_change();
 		});
 		this.refresh_depends_on();
+		this.update_pades_hint();
 	}
 
 	make_field(key, df) {
@@ -383,7 +389,21 @@ class ScanMeAdvancedPrint {
 
 	on_field_change() {
 		this.refresh_depends_on();
+		this.update_pades_hint();
 		this.schedule_preview();
+	}
+
+	update_pades_hint() {
+		// Hint is meaningful only when (a) Apply Signature is on, (b) the
+		// configured signature_type involves PAdES, and (c) the admin master
+		// switch enable_pades_signing is on — otherwise PAdES silently downgrades.
+		const values = this.collect_values();
+		const sig_type = (this.settings && this.settings.signature_type) || "Visual Block";
+		const pades_enabled = !!(this.settings && this.settings.enable_pades_signing);
+		const apply = !!values.apply_signature;
+		const wants_pades = sig_type === "Cryptographic (PAdES)" || sig_type === "Both";
+		const show = apply && wants_pades && pades_enabled;
+		this.$wrapper.find(".sm-ap-pades-hint").prop("hidden", !show);
 	}
 
 	refresh_depends_on() {
@@ -605,6 +625,17 @@ const SM_AP_CSS = `
 .sm-ap-section .frappe-control:last-child {
     margin-bottom: 0;
 }
+.sm-ap-pades-hint {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: var(--bg-blue-50, #eff6ff);
+    border: 1px solid var(--blue-200, #bfdbfe);
+    border-radius: 6px;
+    color: var(--blue-700, #1d4ed8);
+    font-size: 12px;
+    line-height: 1.4;
+}
+.sm-ap-pades-hint[hidden] { display: none; }
 
 .sm-ap-main { position: relative; }
 .sm-ap-preview-wrap {

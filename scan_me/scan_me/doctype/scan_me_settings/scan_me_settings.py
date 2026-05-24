@@ -91,5 +91,6 @@ def get_dialog_settings():
 		"show_signature": 1 if s.get("show_signature_section") in (None, 1, "1", True) else 0,
 		"show_live_preview": 1 if s.get("show_live_preview") in (None, 1, "1", True) else 0,
 		"signature_type": s.get("signature_type") or "Visual Block",
+		"enable_pades_signing": 1 if s.get("enable_pades_signing") in (1, "1", True) else 0,
 		"watermark_mode": s.get("watermark_mode") or "Disabled",
 	}

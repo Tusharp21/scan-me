@@ -15,10 +15,19 @@
   "column_break_verification",
   "lock_verified_qr",
   "reject_client_signature_data",
-  "enable_pades_signing",
-  "signature_type",
   "watermark_mode",
   "default_qr_validity_days",
+  "tab_signing",
+  "cert_status_section",
+  "cert_status_html",
+  "cert_actions_section",
+  "upload_cert_btn",
+  "cert_actions_col_break",
+  "regenerate_cert_btn",
+  "signing_config_section",
+  "enable_pades_signing",
+  "signature_type",
+  "signing_cert_display_name",
   "tab_verify_page",
   "verify_page_section",
   "public_verify_detail",
@@ -94,21 +103,6 @@
    "description": "When on, any signature image sent by the browser is rejected — the server uses only the signature stored on the signer's User profile. When off, the server still prefers the stored signature if one exists and only falls back to the client-supplied image when the User has no stored signature (this prevents a user from submitting someone else's signature image). Requires a Custom Field on the User doctype named one of: user_signature, signature, or signature_image. The handwritten image is consumed only by PAdES digital signing — the on-page stamp does not display it."
   },
   {
-   "fieldname": "enable_pades_signing",
-   "fieldtype": "Check",
-   "label": "Apply Real Digital Signature to PDFs (PAdES)",
-   "default": "0",
-   "description": "Cryptographically signs every generated PDF so Adobe Acrobat Reader shows the signature panel. On first use, a self-signed certificate is auto-created — Adobe will show a yellow \"signer's identity is unknown\" banner until trusted. For the trusted green banner, replace the certificate with one from a recognized authority (eMudhra, DigiCert, Sectigo). See the README for the file path and upgrade steps."
-  },
-  {
-   "fieldname": "signature_type",
-   "fieldtype": "Select",
-   "label": "Signature Type",
-   "options": "Visual Block\nCryptographic (PAdES)\nBoth",
-   "default": "Visual Block",
-   "description": "What is applied when a user ticks \"Apply Signature\" on the Advanced Print page. Visual Block: 'Signature valid' stamp rendered on every page of the PDF. Cryptographic (PAdES): Adobe Reader signature panel (requires \"Apply Real Digital Signature\" above). Both: visual stamp plus PAdES."
-  },
-  {
    "fieldname": "watermark_mode",
    "fieldtype": "Select",
    "label": "Watermark Mode",
@@ -123,6 +117,68 @@
    "default": "0",
    "non_negative": 1,
    "description": "How long a newly generated Verified QR stays valid, counted from the signing date. 0 (default) means the QR never expires. Applied at sign time only — changing this value does NOT retroactively expire existing QRs. The /verify_document page returns an 'expired' status for scans of an expired QR."
+  },
+  {
+   "fieldname": "tab_signing",
+   "fieldtype": "Tab Break",
+   "label": "Signing & Certificates"
+  },
+  {
+   "fieldname": "cert_status_section",
+   "fieldtype": "Section Break",
+   "label": "Active Signing Certificate"
+  },
+  {
+   "fieldname": "cert_status_html",
+   "fieldtype": "HTML",
+   "label": "Certificate Status"
+  },
+  {
+   "fieldname": "cert_actions_section",
+   "fieldtype": "Section Break",
+   "label": "Certificate Actions",
+   "description": "Upload a CA-issued production certificate for green ✓ globally, or regenerate the auto-generated self-signed certificate (yellow ⚠ for recipients who haven't trusted it)."
+  },
+  {
+   "fieldname": "upload_cert_btn",
+   "fieldtype": "Button",
+   "label": "Upload Production Certificate"
+  },
+  {
+   "fieldname": "cert_actions_col_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "regenerate_cert_btn",
+   "fieldtype": "Button",
+   "label": "Regenerate Self-Signed Certificate"
+  },
+  {
+   "fieldname": "signing_config_section",
+   "fieldtype": "Section Break",
+   "label": "PAdES Signing Configuration",
+   "description": "How PAdES signing behaves when users tick Apply Signature on the Advanced Print page. The certificate metadata below is used only when a fresh self-signed certificate is auto-generated; CA-issued certificates use whatever Subject is embedded in the uploaded PKCS#12."
+  },
+  {
+   "fieldname": "enable_pades_signing",
+   "fieldtype": "Check",
+   "label": "Apply Real Digital Signature to PDFs (PAdES)",
+   "default": "0",
+   "description": "Cryptographically signs every generated PDF so Adobe Acrobat Reader shows the signature panel. On first use, a self-signed certificate is auto-created — Adobe will show a yellow \"signer's identity is unknown\" banner until trusted. For the trusted green banner globally, upload a CA-issued document-signing certificate (Sectigo, GlobalSign, eMudhra, DigiCert) via the Upload Production Certificate action above."
+  },
+  {
+   "fieldname": "signature_type",
+   "fieldtype": "Select",
+   "label": "Signature Type",
+   "options": "Visual Block\nCryptographic (PAdES)\nBoth",
+   "default": "Visual Block",
+   "description": "What is applied when a user ticks \"Apply Signature\" on the Advanced Print page. Visual Block: 'Signature valid' stamp rendered on every page of the PDF. Cryptographic (PAdES): invisible cryptographic signature surfaced in Adobe's signature panel (requires \"Apply Real Digital Signature\" above). Both: visual stamp plus PAdES."
+  },
+  {
+   "fieldname": "signing_cert_display_name",
+   "fieldtype": "Data",
+   "label": "Self-Signed Certificate Display Name",
+   "description": "Organisation name baked into the auto-generated self-signed certificate (Subject CN/O). Leave blank to fall back to Global Defaults → Default Company, then to the site name. Used only when generating a new self-signed certificate via the Regenerate action above — ignored when a CA-issued certificate is installed."
   },
   {
    "fieldname": "tab_verify_page",
@@ -205,7 +261,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-04-19 00:00:00.000000",
+ "modified": "2026-05-24 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Scan Me",
  "name": "Scan Me Settings",

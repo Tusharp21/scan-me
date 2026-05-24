@@ -27,10 +27,10 @@ from .watermark import _inject_watermark
 
 
 def _ensure_browsers_path():
-	"""Set PLAYWRIGHT_BROWSERS_PATH lazily (keeps __init__ free of side effects)."""
-	bench_browsers = os.path.abspath(
-		os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "playwright-browsers")
-	)
+	"""Set PLAYWRIGHT_BROWSERS_PATH lazily (keeps __init__ free of side effects).
+	Must match install.py's _browsers_path() so the generator finds the cache
+	the installer wrote to."""
+	bench_browsers = os.path.join(frappe.utils.get_bench_path(), "playwright-browsers")
 	os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", bench_browsers)
 
 

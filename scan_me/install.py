@@ -51,7 +51,7 @@ def ensure_chromium(force=False):
 	except ImportError:
 		frappe.log_error(
 			"Scan Me: playwright missing",
-			"Playwright is not installed. Run `bench setup requirements` to pick it up.",
+			"Playwright module is missing — reinstall scan_me to refresh dependencies.",
 		)
 		return
 
@@ -75,8 +75,8 @@ def ensure_chromium(force=False):
 	env["NODE_OPTIONS"] = f"{env.get('NODE_OPTIONS', '')} --no-deprecation".strip()
 
 	try:
-		# nosemgrep: frappe-subprocess-exec — args are a fixed literal list, no
-		# user input; env is os.environ.copy() plus two known keys.
+		# args are a fixed literal list, no user input; env is os.environ.copy() plus two known keys.
+		# nosemgrep: frappe-subprocess-exec
 		result = subprocess.run(
 			[sys.executable, "-m", "playwright", "install", "chromium-headless-shell"],
 			capture_output=True,

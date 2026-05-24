@@ -29,7 +29,13 @@ def _get_or_create_password() -> str:
 
 
 def _company_name() -> str:
-	"""Cert CN/O: default_company from Global Defaults, else site name."""
+	"""Cert CN/O: Scan Me Settings override → Global Defaults default_company → site name."""
+	try:
+		override = frappe.db.get_single_value("Scan Me Settings", "signing_cert_display_name")
+		if override and override.strip():
+			return override.strip()
+	except Exception:
+		pass
 	try:
 		default_company = frappe.db.get_single_value("Global Defaults", "default_company")
 		if default_company:
@@ -118,12 +124,14 @@ def sign_pdf(
 	name: str,
 	signers: list[dict] | None = None,
 ) -> bytes:
-	"""Apply a PAdES signature and return the signed bytes."""
+	"""Apply an invisible PAdES signature and return the signed bytes.
+	No visual is drawn on the page — viewers (Adobe, Foxit, etc.) surface the
+	signature in their own Signature Panel UI, which avoids overlapping with
+	the on-page signature card rendered by scan_me/api/pdf/signature.py."""
 	from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 	from pyhanko.sign import PdfSignatureMetadata
 	from pyhanko.sign import signers as pyhanko_signers
 	from pyhanko.sign.fields import SigFieldSpec, SigSeedSubFilter, append_signature_field
-	from pyhanko.stamp import TextStampStyle
 
 	pfx_path, password = ensure_signing_cert()
 	signer = pyhanko_signers.SimpleSigner.load_pkcs12(
@@ -142,29 +150,15 @@ def sign_pdf(
 	if signer_names:
 		reason = f"Signed by {signer_summary} ({doctype}: {name})"
 
-	from pypdf import PdfReader
-
-	page_count = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
-	last_page_index = max(0, page_count - 1)
-
 	in_buf = io.BytesIO(pdf_bytes)
 	writer = IncrementalPdfFileWriter(in_buf)
 
-	# Stamp box (PDF points, 1/72"): bottom-right of last page, 180x60 on A4 595x842.
-	stamp_box = (380, 40, 560, 100)
+	# Invisible signature field — no box, so PyHanko emits a sig field with no
+	# on-page appearance. Crypto metadata is unchanged; viewers still show it.
 	field_name = "ScanMeSignature"
 	append_signature_field(
 		writer,
-		SigFieldSpec(
-			sig_field_name=field_name,
-			on_page=last_page_index,
-			box=stamp_box,
-		),
-	)
-
-	stamp_style = TextStampStyle(
-		stamp_text=("Digitally signed by %(signer)s\n" "Date: %(ts)s\n" "Doc: %(doc)s"),
-		background=None,
+		SigFieldSpec(sig_field_name=field_name),
 	)
 
 	meta = PdfSignatureMetadata(
@@ -178,17 +172,8 @@ def sign_pdf(
 	pdf_signer = pyhanko_signers.PdfSigner(
 		signature_meta=meta,
 		signer=signer,
-		stamp_style=stamp_style,
 	)
 
 	out_buf = io.BytesIO()
-	pdf_signer.sign_pdf(
-		writer,
-		output=out_buf,
-		appearance_text_params={
-			"signer": signer_summary,
-			"ts": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-			"doc": f"{doctype}: {name}",
-		},
-	)
+	pdf_signer.sign_pdf(writer, output=out_buf)
 	return out_buf.getvalue()
