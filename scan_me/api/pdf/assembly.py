@@ -58,9 +58,11 @@ def _group_pages_by_status(total, header_on, footer_on):
 		yield run_start, run_end, current_status[0], current_status[1]
 
 
-def _render_copy_with_modes(page, label, header_content, footer_content, margins, header_mode, footer_mode):
+def _render_copy_with_modes(
+	page, label, header_content, footer_content, margins, header_mode, footer_mode, landscape=False
+):
 	"""Render one copy honouring header_mode/footer_mode. Margins stay constant across
-	per-group renders so page breaks don't shift."""
+	per-group renders so page breaks don't shift. ``landscape`` rotates the A4 page."""
 	full_header = _build_header_template(header_content, label)
 	full_footer = _build_footer_template(footer_content)
 	empty_tpl = "<div></div>"
@@ -68,6 +70,7 @@ def _render_copy_with_modes(page, label, header_content, footer_content, margins
 	if header_mode == "All pages" and footer_mode == "All pages":
 		return page.pdf(
 			format="A4",
+			landscape=landscape,
 			display_header_footer=True,
 			header_template=full_header,
 			footer_template=full_footer,
@@ -78,6 +81,7 @@ def _render_copy_with_modes(page, label, header_content, footer_content, margins
 	if header_mode == "None" and footer_mode == "None":
 		return page.pdf(
 			format="A4",
+			landscape=landscape,
 			display_header_footer=True,
 			header_template=empty_tpl,
 			footer_template=empty_tpl,
@@ -88,6 +92,7 @@ def _render_copy_with_modes(page, label, header_content, footer_content, margins
 	# Reference render with full H/F to learn page count.
 	reference = page.pdf(
 		format="A4",
+		landscape=landscape,
 		display_header_footer=True,
 		header_template=full_header,
 		footer_template=full_footer,
@@ -110,6 +115,7 @@ def _render_copy_with_modes(page, label, header_content, footer_content, margins
 		ftr = full_footer if has_footer else empty_tpl
 		segment = page.pdf(
 			format="A4",
+			landscape=landscape,
 			display_header_footer=True,
 			header_template=hdr,
 			footer_template=ftr,

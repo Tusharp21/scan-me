@@ -134,6 +134,7 @@ class ScanMeAdvancedPrint {
                         <div class="sm-ap-section-title">${__("Print Setup")}</div>
                         <div data-ap-field="print_format"></div>
                         <div data-ap-field="letter_head"></div>
+                        <div data-ap-field="orientation"></div>
                         <div data-ap-field="language"></div>
                         <div data-ap-field="attach_to_doc"></div>
                     </div>
@@ -233,6 +234,13 @@ class ScanMeAdvancedPrint {
 			label: __("Letter Head"),
 			options: "Letter Head",
 			default: defaults.letter_head,
+		});
+		this.make_field("orientation", {
+			fieldtype: "Select",
+			fieldname: "orientation",
+			label: __("Orientation"),
+			options: ["Portrait", "Landscape"],
+			default: "Portrait",
 		});
 		this.make_field("language", {
 			fieldtype: "Link",
@@ -365,6 +373,12 @@ class ScanMeAdvancedPrint {
 		});
 		this.refresh_depends_on();
 		this.update_pades_hint();
+		this.update_orientation_class();
+	}
+
+	update_orientation_class() {
+		const v = this.fields_dict.orientation && this.fields_dict.orientation.get_value();
+		this.$wrapper.find(".sm-ap-iframe").toggleClass("sm-ap-landscape", v === "Landscape");
 	}
 
 	make_field(key, df) {
@@ -390,6 +404,7 @@ class ScanMeAdvancedPrint {
 	on_field_change() {
 		this.refresh_depends_on();
 		this.update_pades_hint();
+		this.update_orientation_class();
 		this.schedule_preview();
 	}
 
@@ -455,6 +470,7 @@ class ScanMeAdvancedPrint {
 		return {
 			copy_count: parseInt(v.copy_count || "1", 10),
 			copy_labels: v.copy_labels || "",
+			orientation: v.orientation || "Portrait",
 			header_mode: v.header_mode || "All pages",
 			footer_mode: v.footer_mode || "All pages",
 			include_qr: v.include_qr ? 1 : 0,
@@ -652,6 +668,7 @@ const SM_AP_CSS = `
 .sm-ap-iframe {
     width: 100%;
     max-width: 900px;
+    transition: max-width 0.2s ease;
     min-height: calc(100vh - 180px);
     height: calc(100vh - 180px);
     border: 0;
@@ -659,6 +676,11 @@ const SM_AP_CSS = `
     border-radius: 4px;
     box-shadow: 0 2px 12px rgba(15, 23, 42, 0.1);
     display: block;
+}
+/* Landscape A4 is ~1.41× wider than portrait — give the preview room to fill
+   the main column instead of staying boxed at the portrait width. */
+.sm-ap-iframe.sm-ap-landscape {
+    max-width: 1240px;
 }
 
 .sm-ap-badge {

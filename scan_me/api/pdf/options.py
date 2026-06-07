@@ -10,6 +10,7 @@ MAX_COPIES = 5
 DEFAULT_OPTIONS = {
 	"copy_count": 1,
 	"copy_labels": "",
+	"orientation": "Portrait",
 	"header_mode": "All pages",
 	"footer_mode": "All pages",
 	"include_qr": 0,

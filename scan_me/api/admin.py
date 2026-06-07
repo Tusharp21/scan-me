@@ -96,6 +96,7 @@ def _read_pfx_bytes(file_url: str) -> tuple[bytes, "frappe.model.document.Docume
 	"""Resolve the upload URL, read bytes with the size cap enforced, return (bytes, File-doc).
 	Caller is responsible for wiping the bytes when done."""
 	file_doc, abs_path = _resolve_uploaded_file(file_url)
+	# nosemgrep: frappe-security-file-traversal — abs_path validated by _resolve_uploaded_file() (realpath + private-root containment)
 	with open(abs_path, "rb") as fh:
 		pfx_bytes = fh.read(_MAX_PFX_BYTES + 1)
 	if len(pfx_bytes) > _MAX_PFX_BYTES:
@@ -237,6 +238,7 @@ def cert_status_info() -> dict:
 		}
 
 	try:
+		# nosemgrep: frappe-security-file-traversal — pfx_path validated by _safe_pfx_path() (realpath + private-root containment)
 		with open(pfx_path, "rb") as fh:
 			pfx_bytes = fh.read()
 	except OSError as e:

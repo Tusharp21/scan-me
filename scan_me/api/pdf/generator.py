@@ -69,6 +69,7 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 	copy_labels = _parse_copy_labels(opts["copy_labels"], copy_count)
 	header_mode = opts["header_mode"]
 	footer_mode = opts["footer_mode"]
+	landscape = opts["orientation"] == "Landscape"
 
 	if letter_head == "No Letterhead":
 		letter_head = None
@@ -160,6 +161,7 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 						margins,
 						header_mode,
 						footer_mode,
+						landscape,
 					)
 				)
 

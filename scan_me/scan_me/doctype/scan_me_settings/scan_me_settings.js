@@ -347,6 +347,10 @@ function open_upload_dialog(frm) {
 		primary_action: () => validate_then_show_install(d),
 	});
 
+	// Carry the form ref on the dialog so deep callbacks (install_cert) can
+	// refresh the cert status without reaching for the deprecated cur_frm.
+	d._frm = frm;
+
 	// Track the most recent attached URL so we can call cancel_cert_upload on
 	// dialog close if the admin never clicked Install. Also covers the case
 	// where they attach file A, replace it with file B — A's File doc would
@@ -514,7 +518,7 @@ function install_cert(d, file_url, password) {
 					indicator: "green",
 				});
 				d.hide();
-				render_cert_status(cur_frm);
+				if (d._frm) render_cert_status(d._frm);
 			} else {
 				d.enable_primary_action();
 			}
