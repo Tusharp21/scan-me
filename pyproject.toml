@@ -69,3 +69,25 @@ docstring-code-format = true
 
 [project.urls]
 Repository = "https://github.com/Tusharp21/scan_me.git"
+
+# Press reads this on install — system libs Chromium needs for PDF generation.
+[deploy.dependencies.apt]
+packages = [
+    "libatk1.0-0",
+    "libatk-bridge2.0-0",
+    "libatspi2.0-0",
+    "libcups2",
+    "libdrm2",
+    "libgbm1",
+    "libxkbcommon0",
+    "libxcomposite1",
+    "libxdamage1",
+    "libxfixes3",
+    "libxrandr2",
+    "libpango-1.0-0",
+    "libcairo2",
+    "libasound2",
+    "libnss3",
+    "libnspr4",
+    "libdbus-1-3",
+]

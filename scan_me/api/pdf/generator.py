@@ -34,6 +34,23 @@ def _ensure_browsers_path():
 	os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", bench_browsers)
 
 
+def _launch_chromium(pw):
+	"""Launch headless Chromium, translating a missing-system-library crash into an
+	actionable error. Without packages like libatk the binary exits 127 and Playwright
+	only reports a generic TargetClosedError — useless for diagnosing a deploy."""
+	try:
+		return pw.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"])
+	except Exception as e:
+		text = str(e)
+		if "error while loading shared libraries" in text or "cannot open shared object file" in text:
+			frappe.log_error("Chrome PDF: missing system libraries", frappe.get_traceback())
+			frappe.throw(
+				frappe._("PDF generation is temporarily unavailable. " "Please contact your administrator."),
+				frappe.ValidationError,
+			)
+		raise
+
+
 @frappe.whitelist(allow_guest=False)
 def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, options=None, preview_mode=0):
 	"""Generate a PDF via headless Chromium (Playwright); orchestrates feature modules."""
@@ -122,7 +139,7 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 	pdf_copies = []
 	try:
 		with sync_playwright() as pw:
-			browser = pw.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"])
+			browser = _launch_chromium(pw)
 			page = browser.new_page()
 
 			# Measure rendered header/footer height — Chrome won't auto-size,
@@ -170,6 +187,9 @@ def generate_chrome_pdf(doctype, name, print_format=None, letter_head=None, opti
 			# Stamp overlay must run while browser is alive (rendered via Playwright).
 			if sig_records:
 				final_pdf = _apply_signature_stamp_to_pages(final_pdf, sig_records, browser)
+	except frappe.ValidationError:
+		# Already-actionable message (e.g. missing system libs) — don't mask it.
+		raise
 	except Exception:
 		frappe.log_error("Chrome PDF Generation Failed", frappe.get_traceback())
 		frappe.throw(frappe._("PDF generation failed. Check Error Log for details."))
