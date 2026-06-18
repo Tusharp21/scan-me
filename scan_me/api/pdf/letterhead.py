@@ -26,24 +26,29 @@ def _get_letterhead_raw(letter_head_name):
 
 
 def _build_header_template(header_content, copy_label=""):
-	"""Playwright header template, optionally with copy-label badge."""
-	badge = ""
+	"""Playwright header template. The copy-label banner (if any) stacks ABOVE the
+	letterhead as its own row — not beside it — so it never overlaps page content
+	and doesn't distort the letterhead's own layout. It still lives in the repeating
+	page margin, so the caller must measure this template's height (with the label)
+	and reserve enough top margin to fit it."""
+	banner = ""
 	if copy_label:
 		safe_label = frappe.utils.escape_html(copy_label)
-		badge = (
-			'<div style="padding:2px 10px; border:2px solid #d63030; color:#d63030; '
-			"font-weight:bold; font-size:11px; letter-spacing:1.5px; background:white; "
-			f'white-space:nowrap;">{safe_label}</div>'
+		banner = (
+			'<div style="text-align:right; margin-bottom:1mm;">'
+			'<span style="display:inline-block; padding:2px 10px; border:2px solid #d63030; '
+			"color:#d63030; font-weight:bold; font-size:11px; letter-spacing:1.5px; "
+			f'background:white; white-space:nowrap;">{safe_label}</span>'
+			"</div>"
 		)
 
-	if not header_content and not badge:
+	if not header_content and not banner:
 		return "<div></div>"
 
 	return (
-		'<div style="width:100%; font-size:12px; padding:2mm 10mm; box-sizing:border-box; '
-		'display:flex; justify-content:space-between; align-items:flex-start;">'
-		f'<div style="flex:1;">{header_content}</div>'
-		f'<div style="flex:0 0 auto; margin-left:10mm;">{badge}</div>'
+		'<div style="width:100%; font-size:12px; padding:2mm 10mm; box-sizing:border-box;">'
+		f"{banner}"
+		f"{header_content}"
 		"</div>"
 	)
 
